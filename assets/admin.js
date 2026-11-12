@@ -3,7 +3,7 @@
   'use strict';
   var sb = supabase.createClient(MAHA.SB_URL, MAHA.SB_KEY);
   var CASE_TYPES = ['차단바 교체', '차단기 수리', '차단기 설치', '루프센서 시공', '센서 시공', '경광등 수리', '번호인식(LPR)', '자동출차 전환', '리모컨 · 출입', '기타'];
-  var D = { cats: [], products: [], requests: [], quotes: [], cases: [] };
+  var D = { cats: [], products: [], requests: [], quotes: [], cases: [], accounts: [] };
   var tab = 'requests';
 
   function fail(msg, err) { if (err) console.error(err); modal('<h3>저장하지 못했습니다</h3><p>' + esc(msg) + '</p><p class="hint">' + esc(err && err.message || '') + '</p><button class="btn btn-primary" data-close>확인</button>'); }
@@ -38,11 +38,12 @@
       sb.from('products').select('*').order('sort'),
       sb.from('requests').select('*').order('created_at', { ascending: false }).limit(300),
       sb.from('quotes').select('*').order('created_at', { ascending: false }).limit(300),
-      sb.from('cases').select('*').order('work_date', { ascending: false, nullsFirst: false }).order('created_at', { ascending: false })
+      sb.from('cases').select('*').order('work_date', { ascending: false, nullsFirst: false }).order('created_at', { ascending: false }),
+      sb.from('bank_accounts').select('*').order('sort').order('created_at')
     ]).then(function (r) {
       var err = r.filter(function (x) { return x.error; })[0];
       if (err) { fail('자료를 불러오지 못했습니다. 새로고침해 주세요.', err.error); }
-      D.cats = r[0].data || []; D.products = r[1].data || []; D.requests = r[2].data || []; D.quotes = r[3].data || []; D.cases = r[4].data || [];
+      D.cats = r[0].data || []; D.products = r[1].data || []; D.requests = r[2].data || []; D.quotes = r[3].data || []; D.cases = r[4].data || []; D.accounts = r[5].data || [];
       cb && cb();
     });
   }
@@ -105,7 +106,9 @@
 
   /* ---------- 견적서 ---------- */
   var Q;
-  function blankQuote() { return { id: null, quote_no: null, request_id: null, customer_name: '', contact: '', customer_email: '', customer_phone: '', title: '', delivery: '협의', quote_date: today(), valid_days: 30, note: '** 입금계좌\n기업은행 137-072961-02-017 조상현', rows: [blankRow()], sent_at: null }; }
+  function blankQuote() { return { id: null, quote_no: null, request_id: null, customer_name: '', contact: '', customer_email: '', customer_phone: '', title: '', delivery: '협의', quote_date: today(), valid_days: 30, note: '', account: defaultAccount(), rows: [blankRow()], sent_at: null }; }
+  function accText(a) { return a ? a.bank + ' ' + a.number + (a.holder ? ' ' + a.holder : '') : ''; }
+  function defaultAccount() { var a = D.accounts.filter(function (x) { return x.is_default; })[0] || D.accounts[0]; return accText(a); }
   function blankRow() { return { pid: '', name: '', spec: '', qty: 1, price: 0, note: '', disc: false }; }
   function product(id) { return D.products.filter(function (p) { return p.id === id; })[0]; }
   function findFee(word) { return D.products.filter(function (p) { return p.name.indexOf(word) >= 0; })[0]; }
@@ -121,7 +124,7 @@
     tab = 'quote'; render();
   }
   function loadQuote(q) {
-    Q = { id: q.id, quote_no: q.quote_no, request_id: q.request_id, customer_name: q.customer_name, contact: q.contact || '', customer_email: q.customer_email, customer_phone: q.customer_phone, title: q.title || '', delivery: q.delivery || '협의', quote_date: q.quote_date, valid_days: q.valid_days, note: q.note, rows: (q.items || []).map(function (x) { var r = blankRow(); r.pid = x.pid || ''; r.name = x.name || ''; r.spec = x.spec || ''; r.qty = x.qty; r.price = x.price; r.note = x.note || ''; r.disc = !!x.disc; return r; }), sent_at: q.sent_at };
+    Q = { id: q.id, quote_no: q.quote_no, request_id: q.request_id, customer_name: q.customer_name, contact: q.contact || '', customer_email: q.customer_email, customer_phone: q.customer_phone, title: q.title || '', delivery: q.delivery || '협의', quote_date: q.quote_date, valid_days: q.valid_days, note: q.note, account: q.account || '', rows: (q.items || []).map(function (x) { var r = blankRow(); r.pid = x.pid || ''; r.name = x.name || ''; r.spec = x.spec || ''; r.qty = x.qty; r.price = x.price; r.note = x.note || ''; r.disc = !!x.disc; return r; }), sent_at: q.sent_at };
     if (!Q.rows.length) Q.rows.push(rowFrom(null));
     tab = 'quote'; render(); window.scrollTo(0, 0);
   }
@@ -138,7 +141,7 @@
   function drawQuote() {
     if (!Q) Q = blankQuote();
     $('q-name').value = Q.customer_name; $('q-contact').value = Q.contact; $('q-email').value = Q.customer_email; $('q-phone').value = Q.customer_phone; $('q-title').value = Q.title; $('q-delivery').value = Q.delivery;
-    $('q-date').value = Q.quote_date; $('q-valid').value = String(Q.valid_days); $('q-note').value = Q.note;
+    $('q-date').value = Q.quote_date; $('q-valid').value = String(Q.valid_days); $('q-note').value = Q.note; drawAccSel();
     $('q-body').innerHTML = Q.rows.map(function (r, i) {
       return '<tr><td><select data-i="' + i + '" data-k="pid" aria-label="품목 선택">' + optList(r.pid) + '</select><input data-i="' + i + '" data-k="name" value="' + esc(r.name) + '" placeholder="품목 이름" aria-label="품목 이름" style="margin-top:6px">' + (r.disc ? '<span class="status st-new" style="margin-top:6px">할인</span>' : '') + '</td>' +
         '<td><input data-i="' + i + '" data-k="spec" value="' + esc(r.spec) + '" placeholder="예) 상단LED / 2.7m" aria-label="상세스펙"></td>' +
@@ -187,7 +190,7 @@
       '<table class="grid"><thead><tr><th style="width:44px">NO</th><th>품목</th><th>상세스펙</th><th style="width:84px">공급단가</th><th style="width:56px">총수량</th><th style="width:96px">견적가격</th><th style="width:110px">비고</th></tr></thead><tbody>' +
       rows.map(function (r, i) { var sg = r.disc ? '-' : ''; return '<tr><td class="c b">' + (i + 1) + '</td><td class="c">' + esc(r.name) + '</td><td>' + esc(r.spec) + '</td><td class="r">' + sg + won(r.price) + '</td><td class="r b">' + r.qty + '</td><td class="r b">' + sg + won(Math.abs(r.qty * r.price)) + '</td><td>' + esc(r.note) + '</td></tr>'; }).join('') +
       '<tr><td colspan="5" class="c b">합&nbsp; 계 (VAT별도)</td><td class="r b">' + won(t.sup) + '</td><td></td></tr>' +
-      '<tr><td colspan="7" class="note">' + esc(Q.note) + '</td></tr></tbody></table>';
+      '<tr><td colspan="7" class="note"><div class="note-h">&lt;비&nbsp; 고&gt;</div>' + (Q.account ? '** 입금계좌\n' + esc(Q.account) + (Q.note ? '\n' : '') : '') + esc(Q.note) + '</td></tr></tbody></table>';
   }
   var QF = { 'q-name': 'customer_name', 'q-contact': 'contact', 'q-email': 'customer_email', 'q-phone': 'customer_phone', 'q-title': 'title', 'q-delivery': 'delivery', 'q-date': 'quote_date', 'q-valid': 'valid_days', 'q-note': 'note' };
   Object.keys(QF).forEach(function (id) { $(id).addEventListener(id === 'q-valid' ? 'change' : 'input', function () { Q[QF[id]] = id === 'q-valid' ? +this.value : this.value; drawTotals(); }); });
@@ -206,6 +209,51 @@
     };
   });
   $('q-reset').onclick = function () { Q = blankQuote(); drawQuote(); };
+  /* 입금계좌 선택 · 관리 */
+  function drawAccSel() {
+    var opts = D.accounts.map(function (a) { var t = accText(a); return '<option value="' + esc(t) + '"' + (t === Q.account ? ' selected' : '') + '>' + esc(t) + (a.is_default ? ' (기본)' : '') + '</option>'; });
+    if (Q.account && !D.accounts.some(function (a) { return accText(a) === Q.account; })) opts.unshift('<option selected value="' + esc(Q.account) + '">' + esc(Q.account) + ' (이전 계좌)</option>');
+    $('q-acc').innerHTML = opts.length ? opts.join('') : '<option value="">등록된 계좌가 없습니다 · 계좌 관리에서 추가</option>';
+    $('q-acc-on').checked = !!Q.account;
+    $('q-acc').disabled = !Q.account;
+  }
+  $('q-acc-on').onchange = function () { Q.account = this.checked ? ($('q-acc').value || defaultAccount()) : ''; drawAccSel(); drawTotals(); };
+  $('q-acc').onchange = function () { if ($('q-acc-on').checked) { Q.account = this.value; drawTotals(); } };
+  function accModal() {
+    modal('<h3>입금계좌 관리</h3><p class="hint" style="margin:0">견적서에 표시할 계좌를 등록합니다. 관리자만 볼 수 있습니다.</p><ul class="acc-list" id="acc-list">' +
+      (D.accounts.length ? D.accounts.map(function (a) { return '<li><span><b>' + esc(a.bank) + '</b> ' + esc(a.number) + ' ' + esc(a.holder) + (a.is_default ? ' <span class="status st-sent">기본</span>' : '') + '</span><span style="display:flex;gap:6px">' + (a.is_default ? '' : '<button class="mini" data-adef="' + a.id + '">기본으로</button>') + '<button class="row-del" data-adel="' + a.id + '" aria-label="계좌 삭제">×</button></span></li>'; }).join('') : '<li class="hint">등록된 계좌가 없습니다.</li>') +
+      '</ul><div class="row3"><label class="f" for="a-bank">은행<input id="a-bank" placeholder="예) 기업은행"></label><label class="f" for="a-num">계좌번호<input id="a-num" placeholder="000-000000-00-000"></label><label class="f" for="a-holder">예금주<input id="a-holder" placeholder="예) 조상현"></label></div>' +
+      '<div class="btns"><button class="btn btn-primary" id="a-add">계좌 추가</button><button class="btn btn-line" data-close>닫기</button></div><p class="hint" id="a-msg" role="status"></p>');
+    var refresh = function () { accModal(); drawAccSel(); };
+    $('a-add').onclick = function () {
+      var bank = $('a-bank').value.trim(), num = $('a-num').value.trim(), holder = $('a-holder').value.trim();
+      if (!bank || !num) { $('a-msg').textContent = '은행과 계좌번호를 적어 주세요.'; return; }
+      var sort = D.accounts.reduce(function (m, x) { return Math.max(m, x.sort); }, 0) + 1;
+      sb.from('bank_accounts').insert({ bank: bank, number: num, holder: holder, is_default: !D.accounts.length, sort: sort }).select().single().then(function (r) {
+        if (r.error) { $('a-msg').textContent = '추가하지 못했습니다: ' + r.error.message; return; }
+        D.accounts.push(r.data); refresh();
+      });
+    };
+    [].forEach.call($('acc-list').querySelectorAll('[data-adef]'), function (b) {
+      b.onclick = function () {
+        var id = b.dataset.adef;
+        sb.from('bank_accounts').update({ is_default: false }).neq('id', id).then(function () { return sb.from('bank_accounts').update({ is_default: true }).eq('id', id); }).then(function (r) {
+          if (r.error) { $('a-msg').textContent = '바꾸지 못했습니다: ' + r.error.message; return; }
+          D.accounts.forEach(function (x) { x.is_default = x.id === id; }); refresh();
+        });
+      };
+    });
+    [].forEach.call($('acc-list').querySelectorAll('[data-adel]'), function (b) {
+      b.onclick = function () {
+        var id = b.dataset.adel;
+        sb.from('bank_accounts').delete().eq('id', id).then(function (r) {
+          if (r.error) { $('a-msg').textContent = '삭제하지 못했습니다: ' + r.error.message; return; }
+          D.accounts = D.accounts.filter(function (x) { return x.id !== id; }); refresh();
+        });
+      };
+    });
+  }
+  $('acc-manage').onclick = accModal;
   function nextQuoteNo() {
     var pre = 'mahap-' + (Q.quote_date || today()).replace(/-/g, '') + '-';
     return sb.from('quotes').select('quote_no').like('quote_no', pre + '%').then(function (r) {
@@ -217,7 +265,7 @@
     if (!Q.customer_name && !Q.customer_email) { fail('수신 업체나 이메일을 적어 주세요.'); return Promise.reject(); }
     if (!Q.rows.some(function (r) { return r.price > 0; })) { fail('금액이 들어간 항목이 없습니다. 단가를 적어 주세요.'); return Promise.reject(); }
     var t = calc();
-    var rec = { request_id: Q.request_id, customer_name: Q.customer_name, contact: Q.contact, title: Q.title, delivery: Q.delivery || '협의', customer_email: Q.customer_email, customer_phone: Q.customer_phone, quote_date: Q.quote_date || today(), valid_days: +Q.valid_days || 30, items: Q.rows.filter(function (r) { return r.name || r.price; }), supply: t.sup, vat: t.vat, total: t.tot, note: Q.note };
+    var rec = { request_id: Q.request_id, customer_name: Q.customer_name, contact: Q.contact, title: Q.title, delivery: Q.delivery || '협의', customer_email: Q.customer_email, customer_phone: Q.customer_phone, quote_date: Q.quote_date || today(), valid_days: +Q.valid_days || 30, account: Q.account || '', items: Q.rows.filter(function (r) { return r.name || r.price; }), supply: t.sup, vat: t.vat, total: t.tot, note: Q.note };
     var p = Q.id ? sb.from('quotes').update(rec).eq('id', Q.id).select().single()
       : nextQuoteNo().then(function (no) { rec.quote_no = no; return sb.from('quotes').insert(rec).select().single(); });
     return p.then(function (r) {
