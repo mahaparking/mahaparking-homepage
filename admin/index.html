@@ -58,45 +58,44 @@
     <div class="card panel hidden" data-panel="quote">
       <h2>견적서 작성</h2>
       <p class="hint">제품은 목록에서 고르면 등록해 둔 단가가 들어가고, 단가는 현장에 맞게 바로 고칠 수 있습니다. 합계와 부가세는 자동으로 계산됩니다.</p>
-      <div class="q-grid">
-        <div>
-          <div class="row2">
-            <label class="f" for="q-name">고객(현장명 · 담당자)<input id="q-name"></label>
-            <label class="f" for="q-email">받는 이메일<input id="q-email" type="email" placeholder="고객 이메일"></label>
-          </div>
-          <div class="row3" style="margin-top:12px">
-            <label class="f" for="q-phone">연락처<input id="q-phone"></label>
-            <label class="f" for="q-date">견적일<input id="q-date" type="date"></label>
-            <label class="f" for="q-valid">유효기간<select id="q-valid"><option value="7">7일</option><option value="15" selected>15일</option><option value="30">30일</option></select></label>
-          </div>
-          <div class="tbl-wrap" style="margin-top:16px">
-            <table>
-              <thead><tr><th style="min-width:220px">항목</th><th style="width:90px">수량</th><th class="num" style="width:140px">단가(원)</th><th class="num">금액(원)</th><th></th></tr></thead>
-              <tbody id="q-body"></tbody>
-            </table>
-          </div>
-          <div class="add-row">
-            <button class="btn btn-line btn-sm" type="button" data-add="product">+ 제품 추가</button>
-            <button class="btn btn-line btn-sm" type="button" data-add="travel">+ 출장비</button>
-            <button class="btn btn-line btn-sm" type="button" data-add="install">+ 설치비</button>
-            <button class="btn btn-line btn-sm" type="button" data-add="discount">+ 할인</button>
-            <button class="btn btn-line btn-sm" type="button" data-add="custom">+ 직접 입력</button>
-          </div>
-          <div class="totals" id="q-totals"></div>
-          <label class="f" for="q-note" style="margin-top:16px">비고<textarea id="q-note" style="min-height:70px"></textarea></label>
-          <div class="btns" style="margin-top:16px">
-            <button class="btn btn-cta" type="button" id="q-send">견적서 메일 보내기</button>
-            <button class="btn btn-line" type="button" id="q-save">저장만 하기</button>
-            <button class="btn btn-line" type="button" id="q-print">PDF 저장 · 인쇄</button>
-            <button class="btn btn-line" type="button" id="q-mail">직접 메일 쓰기</button>
-            <button class="btn btn-line" type="button" id="q-reset">새 견적서</button>
-          </div>
-        </div>
-        <div>
-          <div style="font-size:14px;font-weight:700;margin-bottom:8px">견적서 미리보기</div>
-          <div class="doc" id="q-doc"></div>
-        </div>
+      <div class="row3">
+        <label class="f" for="q-name">수신 업체<input id="q-name" placeholder="예) 호계한마음아파트1단지"></label>
+        <label class="f" for="q-contact">담당자 명<input id="q-contact" placeholder="예) 관리소장님"></label>
+        <label class="f" for="q-phone">연락처<input id="q-phone"></label>
       </div>
+      <div class="row3" style="margin-top:12px">
+        <label class="f" for="q-email">받는 이메일<input id="q-email" type="email" placeholder="고객 이메일"></label>
+        <label class="f" for="q-date">견적 일자<input id="q-date" type="date"></label>
+        <label class="f" for="q-valid">유효 기간<select id="q-valid"><option value="15">견적 후 15일</option><option value="30">견적 후 1개월</option><option value="60">견적 후 2개월</option></select></label>
+      </div>
+      <div class="row2" style="margin-top:12px">
+        <label class="f" for="q-title">견적 내용 <span class="hint">("하기와 같이 ○○에 대해 견적 합니다")</span><input id="q-title" placeholder="예) 주차차단바 교체"></label>
+        <label class="f" for="q-delivery">납품<input id="q-delivery" placeholder="협의"></label>
+      </div>
+      <div class="tbl-wrap" style="margin-top:16px">
+        <table>
+          <thead><tr><th style="min-width:200px">품목</th><th style="min-width:140px">상세스펙</th><th style="width:80px">총수량</th><th class="num" style="width:120px">공급단가(원)</th><th class="num">견적가격(원)</th><th style="min-width:110px">비고</th><th></th></tr></thead>
+          <tbody id="q-body"></tbody>
+        </table>
+      </div>
+      <div class="add-row">
+        <button class="btn btn-line btn-sm" type="button" data-add="product">+ 제품 추가</button>
+        <button class="btn btn-line btn-sm" type="button" data-add="travel">+ 출장비</button>
+        <button class="btn btn-line btn-sm" type="button" data-add="install">+ 설치비</button>
+        <button class="btn btn-line btn-sm" type="button" data-add="discount">+ 할인</button>
+        <button class="btn btn-line btn-sm" type="button" data-add="custom">+ 직접 입력</button>
+      </div>
+      <div class="totals" id="q-totals"></div>
+      <label class="f" for="q-note" style="margin-top:16px">하단 안내 <span class="hint">(입금계좌 등, 견적서 맨 아래 칸에 들어갑니다)</span><textarea id="q-note" style="min-height:70px"></textarea></label>
+      <div class="btns" style="margin-top:16px">
+        <button class="btn btn-cta" type="button" id="q-send">견적서 메일 보내기</button>
+        <button class="btn btn-line" type="button" id="q-save">저장만 하기</button>
+        <button class="btn btn-line" type="button" id="q-print">PDF 저장 · 인쇄</button>
+        <button class="btn btn-line" type="button" id="q-mail">직접 메일 쓰기</button>
+        <button class="btn btn-line" type="button" id="q-reset">새 견적서</button>
+      </div>
+      <div style="font-size:14px;font-weight:700;margin:24px 0 8px">견적서 미리보기</div>
+      <div style="overflow-x:auto;background:#EEF2F6;padding:16px;border-radius:12px"><div class="qdoc" id="q-doc" style="margin:0 auto;box-shadow:0 8px 24px -12px rgba(0,0,0,.35)"></div></div>
       <p class="hint" id="q-msg" role="status" style="margin-top:10px"></p>
       <h3 style="font-size:17px;margin:30px 0 10px">견적서 목록</h3>
       <div class="tbl-wrap"><table><thead><tr><th>견적번호</th><th>견적일</th><th>고객</th><th>받는 이메일</th><th class="num">합계</th><th>상태</th><th></th></tr></thead><tbody id="sent-body"></tbody></table></div>
