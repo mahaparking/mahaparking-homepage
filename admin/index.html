@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>마하파킹 관리자</title>
+<link rel="icon" type="image/svg+xml" href="/assets/icon-square.svg">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Gothic+A1:wght@500;700;800;900&family=Noto+Sans+KR:wght@400;500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/assets/site.css">
+<style>
+.login{min-height:calc(100vh - 92px);display:grid;place-items:center;padding:24px;background:var(--navy)}
+.login .form{width:100%;max-width:380px}
+.req-photos{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px}
+.req-photos img{width:52px;height:52px;object-fit:cover;border-radius:6px;cursor:zoom-in}
+</style>
+</head>
+<body>
+<header>
+  <div class="wrap nav">
+    <a class="logo" href="/admin/" aria-label="마하파킹 관리자"><img src="/assets/logo-h-white.svg" alt="마하파킹 MAHAPARKING" class="logo-img"></a>
+    <span style="color:#C5D3E0;font-weight:700">관리자</span>
+  </div>
+</header>
+<main>
+<div id="view-login" class="login hidden">
+  <form class="form" id="login-form" novalidate>
+    <h1 style="font-size:24px">관리자 로그인</h1>
+    <label class="f" for="l-email">이메일<input id="l-email" type="email" autocomplete="username" value="ace@mahaparking.co.kr"></label>
+    <label class="f" for="l-pass">비밀번호<input id="l-pass" type="password" autocomplete="current-password"></label>
+    <button class="btn btn-primary" type="submit">로그인</button>
+    <p class="hint" id="l-msg" role="alert"></p>
+  </form>
+</div>
+<div id="view-loading" style="padding:80px 20px;text-align:center" class="hint">불러오고 있습니다...</div>
+<!-- ============ 관리 화면 ============ -->
+<div id="view-admin" class="hidden">
+  <div class="admin-bar"><div class="wrap" style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;align-items:center"><span><b>마하파킹 관리자</b> · <span id="who"></span></span><span style="display:flex;gap:8px"><a class="btn btn-line btn-sm" href="/" target="_blank" rel="noopener">홈페이지 보기</a><button class="btn btn-line btn-sm" id="logout">로그아웃</button></span></div></div>
+  <div class="wrap">
+    <div class="tabs" role="tablist" id="admin-tabs">
+      <button role="tab" data-tab="requests">견적 요청함 <span class="badge" id="new-badge"></span></button>
+      <button role="tab" data-tab="quote">견적서 작성</button>
+      <button role="tab" data-tab="caseup">시공사례 올리기</button>
+      <button role="tab" data-tab="prices">견적 항목 관리</button>
+    </div>
+
+    <!-- 견적 요청함 -->
+    <div class="card panel" data-panel="requests">
+      <h2>견적 요청함</h2>
+      <div class="add-row" style="margin-top:0"><button class="btn btn-line btn-sm" type="button" id="req-reload">↻ 새로고침</button></div>
+      <p class="hint">홈페이지에서 들어온 상담 신청과 제품 견적 요청입니다. "견적서 만들기"를 누르면 고객 정보와 요청 제품이 견적서에 자동으로 들어갑니다.</p>
+      <div class="tbl-wrap"><table><thead><tr><th>접수일</th><th>구분</th><th>고객</th><th>요청 내용</th><th>상태</th><th></th></tr></thead><tbody id="req-body"></tbody></table></div>
+    </div>
+
+    <!-- 견적서 작성 -->
+    <div class="card panel hidden" data-panel="quote">
+      <h2>견적서 작성</h2>
+      <p class="hint">제품은 목록에서 고르면 등록해 둔 단가가 들어가고, 단가는 현장에 맞게 바로 고칠 수 있습니다. 합계와 부가세는 자동으로 계산됩니다.</p>
+      <div class="q-grid">
+        <div>
+          <div class="row2">
+            <label class="f" for="q-name">고객(현장명 · 담당자)<input id="q-name"></label>
+            <label class="f" for="q-email">받는 이메일<input id="q-email" type="email" placeholder="고객 이메일"></label>
+          </div>
+          <div class="row3" style="margin-top:12px">
+            <label class="f" for="q-phone">연락처<input id="q-phone"></label>
+            <label class="f" for="q-date">견적일<input id="q-date" type="date"></label>
+            <label class="f" for="q-valid">유효기간<select id="q-valid"><option value="7">7일</option><option value="15" selected>15일</option><option value="30">30일</option></select></label>
+          </div>
+          <div class="tbl-wrap" style="margin-top:16px">
+            <table>
+              <thead><tr><th style="min-width:220px">항목</th><th style="width:90px">수량</th><th class="num" style="width:140px">단가(원)</th><th class="num">금액(원)</th><th></th></tr></thead>
+              <tbody id="q-body"></tbody>
+            </table>
+          </div>
+          <div class="add-row">
+            <button class="btn btn-line btn-sm" type="button" data-add="product">+ 제품 추가</button>
+            <button class="btn btn-line btn-sm" type="button" data-add="travel">+ 출장비</button>
+            <button class="btn btn-line btn-sm" type="button" data-add="install">+ 설치비</button>
+            <button class="btn btn-line btn-sm" type="button" data-add="discount">+ 할인</button>
+            <button class="btn btn-line btn-sm" type="button" data-add="custom">+ 직접 입력</button>
+          </div>
+          <div class="totals" id="q-totals"></div>
+          <label class="f" for="q-note" style="margin-top:16px">비고<textarea id="q-note" style="min-height:70px"></textarea></label>
+          <div class="btns" style="margin-top:16px">
+            <button class="btn btn-cta" type="button" id="q-save">저장하기</button>
+            <button class="btn btn-line" type="button" id="q-print">PDF 저장 · 인쇄</button>
+            <button class="btn btn-line" type="button" id="q-mail">고객에게 메일 쓰기</button>
+            <button class="btn btn-line" type="button" id="q-reset">새 견적서</button>
+          </div>
+        </div>
+        <div>
+          <div style="font-size:14px;font-weight:700;margin-bottom:8px">견적서 미리보기</div>
+          <div class="doc" id="q-doc"></div>
+        </div>
+      </div>
+      <p class="hint" id="q-msg" role="status" style="margin-top:10px"></p>
+      <h3 style="font-size:17px;margin:30px 0 10px">견적서 목록</h3>
+      <div class="tbl-wrap"><table><thead><tr><th>견적번호</th><th>견적일</th><th>고객</th><th>받는 이메일</th><th class="num">합계</th><th>상태</th><th></th></tr></thead><tbody id="sent-body"></tbody></table></div>
+    </div>
+
+    <!-- 시공사례 올리기 -->
+    <div class="card panel hidden" data-panel="caseup">
+      <h2>시공사례 올리기</h2>
+      <p class="hint">사진을 올리고 두세 줄만 쓰면 홈페이지 시공사례에 바로 추가됩니다. 첫 번째 사진이 대표 사진이 됩니다.</p>
+      <form id="case-form" style="display:grid;gap:14px;max-width:760px" novalidate>
+        <label class="f" for="k-photo">현장 사진 <span class="hint">(작업 전 · 후, 최대 8장)</span><input id="k-photo" type="file" accept="image/*" multiple></label>
+        <div class="thumbs" id="k-thumbs"></div>
+        <label class="f" for="k-title">제목<input id="k-title" placeholder="예) 공영주차장 양면 LED 차단바 교체"></label>
+        <div class="row3">
+          <label class="f" for="k-area">지역<input id="k-area" placeholder="예) 서울 잠실"></label>
+          <label class="f" for="k-type">작업 종류<select id="k-type"></select></label>
+          <label class="f" for="k-date">작업일<input id="k-date" type="date"></label>
+        </div>
+        <label class="f" for="k-desc">짧은 설명 <span class="hint">(두세 줄)</span><textarea id="k-desc" placeholder="어떤 문제가 있었고, 어떻게 해결했는지 짧게 적어 주세요."></textarea></label>
+        <label class="f" for="k-result">결과 한 줄 <span class="hint">(카드 아래 굵게 표시)</span><input id="k-result" placeholder="예) 당일 출동 · 당일 복구"></label>
+        <div class="btns"><button class="btn btn-primary" type="submit">홈페이지에 올리기</button></div>
+        <p class="hint" id="k-msg" role="status"></p>
+      </form>
+      <h3 style="font-size:17px;margin:30px 0 10px">올린 시공사례</h3>
+      <div class="tbl-wrap"><table><thead><tr><th>작업일</th><th>제목</th><th>지역</th><th>종류</th><th>사진</th><th>홈페이지 공개</th><th></th></tr></thead><tbody id="case-body"></tbody></table></div>
+    </div>
+
+    <!-- 견적 항목 관리 -->
+    <div class="card panel hidden" data-panel="prices">
+      <h2>견적 항목 관리</h2>
+      <p class="hint">견적서를 만들 때 고르는 제품·비용 목록을 여기서 더하고 빼고 정리합니다. 단가는 견적서에서 고를 때 들어가는 기본값이며, 홈페이지에는 표시되지 않습니다.</p>
+      <div class="cat-box">
+        <div class="cat-head"><b>구분(묶음)</b><span class="hint">견적서 선택 목록이 이 순서와 이름으로 묶여 나옵니다.</span></div>
+        <div class="cat-list" id="cat-list"></div>
+        <div class="add-row" style="margin:10px 0 0"><input id="cat-new" placeholder="새 구분 이름 (예: 관제 장비)" style="max-width:240px"><button class="btn btn-line btn-sm" type="button" id="cat-add">+ 구분 추가</button></div>
+      </div>
+      <div class="add-row" style="align-items:center;margin-top:18px">
+        <label class="f" for="price-filter" style="display:flex;gap:8px;align-items:center">보기<select id="price-filter" style="width:auto"></select></label>
+        <input id="price-search" placeholder="이름으로 찾기" style="max-width:200px">
+        <button class="btn btn-primary btn-sm" type="button" id="price-add">+ 항목 추가</button>
+        <span class="hint" id="price-msg" role="status"></span>
+      </div>
+      <div class="tbl-wrap"><table class="ptable"><thead><tr><th>순서</th><th>구분</th><th>항목 이름</th><th>설명</th><th>단위</th><th class="num">기본 단가(원)</th><th>견적서에 사용</th><th>홈페이지 표시</th><th>길이 입력</th><th></th></tr></thead><tbody id="price-body"></tbody></table></div>
+      <p class="hint" style="margin-top:10px">· <b>견적서에 사용</b>을 끄면 견적서 선택 목록에서만 빠지고, 항목 자료는 남아 있어 다시 켤 수 있습니다.<br>· <b>홈페이지 표시</b>를 켜면 고객용 제품 견적 화면에 나옵니다(가격은 보이지 않습니다).<br>· <b>길이 입력</b>을 켜면 고객이 신청할 때 길이(m)를 적는 칸이 생깁니다.</p>
+    </div>
+  </div>
+</div>
+</main>
+<div class="modal hidden" id="modal" role="dialog" aria-modal="true"><div class="modal-box" id="modal-box"></div></div>
+<script src="/assets/supabase.js"></script>
+<script src="/assets/common.js"></script>
+<script src="/assets/admin.js"></script>
+</body>
+</html>
