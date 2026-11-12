@@ -274,7 +274,7 @@ footer strong{color:#fff;font-family:var(--font-display);font-size:18px}
 .qdoc table.kv td{padding:1px 0;border:0;background:none;font-size:12.5px;font-weight:700;vertical-align:top;color:#111}
 .qdoc table.kv td.k{white-space:nowrap;padding-right:4px}
 .qdoc .right{max-width:390px}
-.qdoc .logo{height:58px;display:block;margin:0 0 10px auto}
+.qdoc .logo{height:58px;display:block;margin:0 0 10px 0}
 .qdoc .seal{font-weight:500;color:#5A6873;margin-left:6px}
 .qdoc .lead{font-weight:700;margin:24px 0 10px;font-size:13px}
 .qdoc table.grid{width:100%;border-collapse:collapse;min-width:0;font-size:12px}
