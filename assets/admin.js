@@ -87,7 +87,8 @@
           if (x.error) return fail('사진을 불러오지 못했습니다.', x.error);
           var box = $('req-body').querySelector('[data-rp="' + r.id + '"]');
           box.innerHTML = x.data.map(function (u) { return u.signedUrl ? '<img src="' + u.signedUrl + '" alt="고객 첨부 사진" data-big="' + u.signedUrl + '">' : ''; }).join('');
-          [].forEach.call(box.querySelectorAll('[data-big]'), function (im) { im.onclick = function () { modal('<div class="viewer"><img src="' + im.dataset.big + '" alt="고객 첨부 사진"></div><a class="btn btn-line" href="' + im.dataset.big + '" target="_blank" rel="noopener">원본 열기</a><button class="btn btn-line" data-close>닫기</button>'); }; });
+          var urls = x.data.filter(function (u) { return u.signedUrl; }).map(function (u) { return u.signedUrl; });
+          [].forEach.call(box.querySelectorAll('[data-big]'), function (im, k) { im.onclick = function () { gallery(urls, k, '고객 첨부 사진'); }; });
         });
       };
     });
@@ -391,7 +392,7 @@
     $('k-msg').textContent = '사진을 정리하고 있습니다...';
     Promise.all(fs.map(function (f) { return shrinkToBlob(f, 1600); })).then(function (r) { kPhotos = kPhotos.concat(r.filter(Boolean)); drawK(); $('k-msg').textContent = ''; });
   });
-  function drawK() { drawThumbs('k-thumbs', kPhotos, function (i) { kPhotos.splice(i, 1); drawK(); }); }
+  function drawK() { drawThumbs('k-thumbs', kPhotos, drawK); }
   $('case-form').addEventListener('submit', function (e) {
     e.preventDefault();
     var form = this, btn = form.querySelector('button[type=submit]');
@@ -411,14 +412,33 @@
       $('k-msg').textContent = '홈페이지에 올렸습니다.';
     }).catch(function (err) { btn.disabled = false; $('k-msg').textContent = ''; fail('시공사례를 올리지 못했습니다.', err); });
   });
+  function casePhotoUrl(p) { return sb.storage.from('case-photos').getPublicUrl(p).data.publicUrl; }
+  function editCasePhotos(c) {
+    var list = c.photos.slice();
+    modal('<h3>사진 순서 · 대표 사진</h3><p class="hint" style="margin:0">' + esc(c.title) + '<br>"대표로"를 누르면 맨 앞(대표 사진)으로 갑니다. ◀ ▶로 순서를 바꾸고, ×로 사진을 뺄 수 있습니다.</p><div class="thumbs" id="ord-thumbs"></div><div class="btns"><button class="btn btn-primary" id="ord-save">저장</button><button class="btn btn-line" data-close>취소</button></div><p class="hint" id="ord-msg" role="status"></p>');
+    var redraw = function () { drawThumbs('ord-thumbs', list, redraw, casePhotoUrl); };
+    redraw();
+    $('ord-save').onclick = function () {
+      var btn = this; btn.disabled = true;
+      var removed = c.photos.filter(function (p) { return list.indexOf(p) < 0; });
+      sb.from('cases').update({ photos: list }).eq('id', c.id).then(function (r) {
+        if (r.error) { btn.disabled = false; $('ord-msg').textContent = '저장하지 못했습니다: ' + r.error.message; return; }
+        if (removed.length) sb.storage.from('case-photos').remove(removed).then(function () {});
+        c.photos = list.slice(); closeModal(); drawCaseAdmin();
+      });
+    };
+  }
   function drawCaseAdmin() {
     $('case-body').innerHTML = D.cases.length ? D.cases.map(function (c) {
       return '<tr><td>' + dot(c.work_date) + '</td><td><b>' + esc(c.title) + '</b></td><td>' + esc(c.area) + '</td><td>' + esc(c.work_type) + '</td><td>' + (c.photos ? c.photos.length : 0) + '장</td>' +
         '<td style="text-align:center"><input type="checkbox" data-pub="' + c.id + '"' + (c.published ? ' checked' : '') + ' aria-label="홈페이지 공개" style="width:18px;height:18px"></td>' +
-        '<td><button class="btn btn-danger btn-sm" data-delc="' + c.id + '">삭제</button></td></tr>';
+        '<td style="white-space:nowrap">' + (c.photos && c.photos.length ? '<button class="btn btn-line btn-sm" data-ordc="' + c.id + '">사진 순서 · 대표</button> ' : '') + '<button class="btn btn-danger btn-sm" data-delc="' + c.id + '">삭제</button></td></tr>';
     }).join('') : '<tr><td colspan="7" class="hint">아직 올린 시공사례가 없습니다.</td></tr>';
     [].forEach.call($('case-body').querySelectorAll('[data-pub]'), function (el) {
       el.onchange = function () { var c = D.cases.filter(function (x) { return x.id === el.dataset.pub; })[0]; sb.from('cases').update({ published: el.checked }).eq('id', c.id).then(function (r) { if (r.error) { el.checked = !el.checked; return fail('공개 설정을 바꾸지 못했습니다.', r.error); } c.published = el.checked; }); };
+    });
+    [].forEach.call($('case-body').querySelectorAll('[data-ordc]'), function (b) {
+      b.onclick = function () { editCasePhotos(D.cases.filter(function (x) { return x.id === b.dataset.ordc; })[0]); };
     });
     [].forEach.call($('case-body').querySelectorAll('[data-delc]'), function (b) {
       b.onclick = function () {

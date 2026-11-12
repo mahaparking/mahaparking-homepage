@@ -75,14 +75,15 @@
   }
   document.addEventListener('click', function (e) {
     var t = e.target.closest('[data-view]'); if (!t || !CASES) return;
-    var c = CASES.filter(function (x) { return x.id === t.dataset.view; })[0]; if (!c) return;
-    modal('<div class="viewer"><img src="' + photoUrl(c.photos[+t.dataset.i]) + '" alt="' + esc(c.title) + '"></div><button class="btn btn-line" data-close>닫기</button>');
+    var c = CASES.filter(function (x) { return x.id === t.dataset.view; })[0]; if (!c || !c.photos || !c.photos.length) return;
+    gallery(c.photos.map(photoUrl), +t.dataset.i, c.title);
   });
 
   /* 업싸이클링 사진 크게 보기 */
   document.addEventListener('click', function (e) {
     var b = e.target.closest('[data-up]'); if (!b) return;
-    modal('<div class="viewer"><img src="/assets/upcycle/' + b.dataset.up + '.jpg" alt="마하파킹 업싸이클링 시공 현장"></div><button class="btn btn-line" data-close>닫기</button>');
+    var urls = []; for (var k = 1; k <= 12; k++) urls.push('/assets/upcycle/' + String(k).padStart(2, '0') + '.jpg');
+    gallery(urls, (+b.dataset.up) - 1, '마하파킹 업싸이클링 시공 현장');
   });
 
   /* ---------- 상담 신청 ---------- */
@@ -91,7 +92,7 @@
     var fs = [].slice.call(this.files).slice(0, 6 - cPhotos.length); this.value = '';
     Promise.all(fs.map(function (f) { return shrinkToBlob(f, 1600); })).then(function (r) { cPhotos = cPhotos.concat(r.filter(Boolean)); drawC(); });
   });
-  function drawC() { drawThumbs('c-thumbs', cPhotos, function (i) { cPhotos.splice(i, 1); drawC(); }); }
+  function drawC() { drawThumbs('c-thumbs', cPhotos, drawC); }
   $('consult-form').addEventListener('submit', function (e) {
     e.preventDefault();
     var form = this, done = $('c-done'), btn = form.querySelector('button[type=submit]');
