@@ -11,7 +11,7 @@
     ['cam', '번호인식(LPR) 업싸이클링', '기존 차단기는 살리고 번호인식만 추가하거나, 구형 LPR을 신형으로 바꿉니다.'],
     ['remote', '리모컨 · 출입 · 네트워크', '리모컨 수신 불량, RF 카드·리더기, 관제 PC 복구와 경비실 네트워크 신설까지 맡습니다.']
   ];
-  var SYMPTOMS = ['차단바 파손', '바가 안 올라감', '안 내려감 · 차량 타격', '저절로 열림', '경광등 이상', '번호인식 불량', '리모컨 · 카드 불량'];
+  var SYMPTOMS = ['업싸이클링 상담', '차단바 파손', '바가 안 올라감', '안 내려감 · 차량 타격', '저절로 열림', '경광등 이상', '번호인식 불량', '리모컨 · 카드 불량'];
   var FAIL = '접수 중 문제가 생겼습니다. 잠시 후 다시 시도하시거나 ' + MAHA.PHONE + '으로 전화 주세요.';
 
   /* ---------- 화면 전환 ---------- */
@@ -33,6 +33,10 @@
     var b = e.target.closest('[data-go]'); if (!b) return;
     e.preventDefault();
     var v = b.dataset.go, a = b.dataset.anchor;
+    if (b.dataset.pick) setTimeout(function () {
+      [].forEach.call(document.querySelectorAll('#c-symptom input'), function (i) { if (i.value === b.dataset.pick) i.checked = true; });
+      var memo = $('c-memo'); if (memo && !memo.value) memo.placeholder = '현장 장비 상황(제조사, 설치 연도, 불편한 점 등)을 적어 주시면 점검 일정을 잡아 드립니다.';
+    }, 60);
     if (('#' + v) !== location.hash) {
       if (a) { history.replaceState(null, '', '#' + v); show(v, a); } else location.hash = v;
     } else show(v, a);
