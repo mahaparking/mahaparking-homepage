@@ -262,3 +262,6 @@ footer strong{color:#fff;font-family:var(--font-display);font-size:18px}
 .ptable tr.grp td{background:#EEF3F8;font-weight:800;color:var(--brand);font-size:13.5px}
 .ptable tr.off td{opacity:.55}
 .ptable td input[type=checkbox]{width:18px;height:18px}
+
+/* 견적서 표 마지막 줄 테두리 */
+.doc tr:last-child td{border-bottom:1px solid #D8DEE4}
