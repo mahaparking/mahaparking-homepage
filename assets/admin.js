@@ -170,7 +170,7 @@
   function docHtml(no) {
     var t = calc();
     return '<h2>견적서</h2><div class="doc-head"><div><b>' + esc(Q.customer_name || '고객명') + '</b> 귀하<br>견적번호 ' + esc(no) + '<br>견적일 ' + dot(Q.quote_date) + '<br>유효기간 ' + validDate() + '까지</div>' +
-      '<div><img src="/assets/logo-h-blue.svg" alt="마하파킹" style="height:34px;display:block;margin-bottom:4px">주차장비 유지보수 &amp; 업싸이클링<br>' + MAHA.PHONE + '<br>' + MAHA.EMAIL + '<br><span style="font-size:11.5px;color:#5A6873">대표 조상현 · 사업자 273-11-02830<br>경기도 안양시 만안구 만안로 31-3, 9층 911호</span></div></div>' +
+      '<div><img src="/assets/logo-h-blue.png" alt="마하파킹" style="height:34px;display:block;margin-bottom:4px">주차장비 유지보수 &amp; 업싸이클링<br>' + MAHA.PHONE + '<br>' + MAHA.EMAIL + '<br><span style="font-size:11.5px;color:#5A6873">대표 조상현 · 사업자 273-11-02830<br>경기도 안양시 만안구 만안로 31-3, 9층 911호</span></div></div>' +
       '<table><thead><tr><th>항목</th><th class="num">수량</th><th class="num">단가</th><th class="num">금액</th></tr></thead><tbody>' +
       Q.rows.filter(function (r) { return r.name || r.price; }).map(function (r) { return '<tr><td>' + esc(r.name) + '</td><td class="num">' + r.qty + '</td><td class="num">' + (r.disc ? '-' : '') + won(r.price) + '</td><td class="num">' + (r.disc ? '-' : '') + won(Math.abs(r.qty * r.price)) + '</td></tr>'; }).join('') +
       '</tbody></table><div style="margin-top:8px;text-align:right;font-variant-numeric:tabular-nums">공급가액 ' + won(t.sup) + '원 · 부가세 ' + won(t.vat) + '원</div><div class="sum">합계 금액 ' + won(t.tot) + '원 (부가세 포함)</div>' + (Q.note ? '<div class="foot">' + esc(Q.note) + '</div>' : '');
@@ -247,6 +247,63 @@
     });
   }
   $('q-mail').onclick = function () { saveQuote().then(mailQuote).catch(function () {}); };
+
+  /* 견적서 PDF 만들기 (브라우저에서) + 메일 자동 발송 */
+  function loadScript(src) { return new Promise(function (ok, no) { var el = document.createElement('script'); el.src = src; el.onload = ok; el.onerror = no; document.head.appendChild(el); }); }
+  function pdfLibs() {
+    if (window.html2canvas && window.jspdf) return Promise.resolve();
+    return loadScript('/assets/html2canvas.min.js').then(function () { return loadScript('/assets/jspdf.umd.min.js'); });
+  }
+  function makePdfBase64(q) {
+    return pdfLibs().then(function () {
+      var box = document.createElement('div');
+      box.className = 'doc';
+      box.style.cssText = 'position:fixed;left:-10000px;top:0;width:760px;font-size:14px;border:0;box-shadow:none;background:#fff';
+      box.innerHTML = docHtml(q.quote_no);
+      document.body.appendChild(box);
+      var imgs = [].slice.call(box.querySelectorAll('img'));
+      return Promise.all(imgs.map(function (im) { return im.complete ? 1 : new Promise(function (r) { im.onload = im.onerror = r; }); }))
+        .then(function () { return window.html2canvas(box, { scale: 2, backgroundColor: '#ffffff', useCORS: true }); })
+        .then(function (canvas) {
+          document.body.removeChild(box);
+          var pdf = new window.jspdf.jsPDF({ unit: 'mm', format: 'a4' });
+          var w = 182, h = canvas.height * w / canvas.width, pageH = 269;
+          var img = canvas.toDataURL('image/jpeg', 0.92);
+          if (h <= pageH) pdf.addImage(img, 'JPEG', 14, 14, w, h);
+          else { var y = 0; while (y < h) { if (y > 0) pdf.addPage(); pdf.addImage(img, 'JPEG', 14, 14 - y, w, h); y += pageH; } }
+          return pdf.output('datauristring').split(',')[1];
+        }, function (e) { if (box.parentNode) document.body.removeChild(box); throw e; });
+    });
+  }
+  $('q-send').onclick = function () {
+    var btn = this;
+    if (!Q.customer_email || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(Q.customer_email)) { fail('받는 이메일 주소를 확인해 주세요.'); return; }
+    saveQuote().then(function (q) {
+      var t = calc();
+      modal('<h3>견적서를 메일로 보낼까요?</h3><div class="mail"><div class="mh"><span>받는 곳</span><span>' + esc(Q.customer_email) + '</span><span>보내는 곳</span><span>마하파킹 &lt;' + MAHA.EMAIL + '&gt;</span><span>제목</span><span>[마하파킹] 요청하신 견적서를 보내 드립니다 (' + esc(q.quote_no) + ')</span><span>첨부</span><span>마하파킹_견적서_' + esc(q.quote_no) + '.pdf</span></div>합계 <b>' + won(t.tot) + '원</b> (부가세 포함)<br><span class="hint">대표님 메일함(' + MAHA.EMAIL + ')에도 사본이 함께 갑니다.</span></div><div class="btns"><button class="btn btn-cta" id="do-send">보내기</button><button class="btn btn-line" data-close>취소</button></div><p class="hint" id="send-msg" role="status"></p>');
+      $('do-send').onclick = function () {
+        var b = this; b.disabled = true; $('send-msg').textContent = '견적서 PDF를 만들고 있습니다...';
+        makePdfBase64(q).then(function (pdf) {
+          $('send-msg').textContent = '메일을 보내고 있습니다...';
+          return sb.functions.invoke('send-quote', { body: { quote_id: q.id, pdf_base64: pdf } });
+        }).then(function (r) {
+          if (r.error || !r.data || !r.data.ok) {
+            var msg = (r.data && r.data.error) || (r.error && r.error.message) || '알 수 없는 오류';
+            if (r.error && r.error.context && r.error.context.json) { return r.error.context.json().then(function (j) { throw new Error(j.error || msg); }, function () { throw new Error(msg); }); }
+            throw new Error(msg);
+          }
+          D.quotes = D.quotes.map(function (x) { return x.id === q.id ? Object.assign({}, x, { sent_at: r.data.sent_at }) : x; });
+          if (Q && Q.id === q.id) Q.sent_at = r.data.sent_at;
+          var req = D.requests.filter(function (x) { return x.id === q.request_id; })[0]; if (req) req.status = 'sent';
+          $('modal-box').innerHTML = '<h3>메일을 보냈습니다</h3><p>' + esc(Q.customer_email) + ' 앞으로 견적서 ' + esc(q.quote_no) + '를 보냈습니다. 하이웍스 메일함에서도 사본을 확인하실 수 있습니다.</p><button class="btn btn-primary" data-close>확인</button>';
+          render();
+        }).catch(function (e) {
+          b.disabled = false;
+          $('send-msg').innerHTML = '<b style="color:#D7392B">보내지 못했습니다.</b> ' + esc(e && e.message || e) + '<br>"직접 메일 쓰기"로 보내실 수도 있습니다.';
+        });
+      };
+    }).catch(function () {});
+  };
   function drawQuoteList() {
     $('sent-body').innerHTML = D.quotes.length ? D.quotes.map(function (q) {
       return '<tr><td>' + esc(q.quote_no) + '</td><td>' + dot(q.quote_date) + '</td><td>' + esc(q.customer_name) + '</td><td>' + esc(q.customer_email) + '</td><td class="num">' + won(q.total) + '원</td><td>' + (q.sent_at ? '<span class="status st-sent">발송 ' + dot(q.sent_at) + '</span>' : '<span class="status st-quote">저장</span>') + '</td>' +
