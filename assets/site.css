@@ -284,4 +284,46 @@ footer strong{color:#fff;font-family:var(--font-display);font-size:18px}
 .qdoc table.grid .c{text-align:center}
 .qdoc table.grid .r{text-align:right;font-variant-numeric:tabular-nums}
 .qdoc table.grid .b{font-weight:700}
-.qdoc table.grid td.note{white-space:pre-line;text-align:left;vertical-align:top;height:90px;font-size:12.5px;padding:24px 4px 10px}
+.qdoc table.grid td.note{white-space:pre-line;text-align:left;vertical-align:top;height:110px;font-size:12.5px;padding:12px 10px 14px}
+.qdoc table.grid td.note .note-h{font-weight:700;text-align:center;margin-bottom:6px}
+
+/* ===== 업싸이클링 구역 ===== */
+.tone-w{background:#fff}
+.up-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px}
+.up-card{padding:24px}
+.up-card h3{font-size:19px;font-weight:800;margin-bottom:12px}
+.up-check,.up-list{list-style:none;margin:0;padding:0;display:grid;gap:9px;font-size:15px}
+.up-check li,.up-list li{position:relative;padding-left:26px}
+.up-check li::before{content:"?";position:absolute;left:0;top:2px;width:18px;height:18px;border-radius:50%;background:#FDECEA;color:var(--stop);font-size:12px;font-weight:800;display:grid;place-items:center;line-height:1}
+.up-list li::before{content:"";position:absolute;left:4px;top:9px;width:9px;height:9px;border-radius:2px;background:var(--brand)}
+.up-vs{display:grid;gap:12px}
+.up-vs p{margin:6px 0 0;font-size:15px}
+.up-vs .tag{display:inline-block;font-size:13px;font-weight:800;padding:3px 10px;border-radius:999px}
+.up-vs .keep{background:#EAF7F0;color:var(--ok)}
+.up-vs .swap{background:#E3EEF8;color:var(--brand)}
+.up-stats{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin:0 0 16px}
+.up-stats div{background:var(--navy);color:#fff;border-radius:16px;padding:20px;display:grid;gap:4px}
+.up-stats b{font-family:var(--font-display);font-size:32px;font-weight:900;color:var(--signal);line-height:1.1}
+.up-stats small{font-size:16px;color:#fff;margin-left:2px}
+.up-stats span{font-size:14px;color:#C5D3E0}
+.up-gallery-head{display:flex;justify-content:space-between;align-items:baseline;gap:10px;flex-wrap:wrap;margin:28px 0 12px}
+.up-gallery-head h3{font-size:19px;font-weight:800}
+.up-gallery{display:grid;grid-template-columns:repeat(6,1fr);gap:10px}
+.up-ph{padding:0;border:0;background:#EEF2F6;border-radius:12px;overflow:hidden;cursor:zoom-in;aspect-ratio:3/4}
+.up-ph img{width:100%;height:100%;object-fit:cover;display:block;transition:transform .2s}
+.up-ph:hover img{transform:scale(1.04)}
+@media (max-width:900px){.up-grid{grid-template-columns:1fr}.up-stats{grid-template-columns:1fr 1fr}.up-gallery{grid-template-columns:repeat(4,1fr)}}
+@media (max-width:520px){.up-gallery{grid-template-columns:repeat(3,1fr)}.up-stats b{font-size:26px}}
+@media (prefers-reduced-motion:reduce){.up-ph img{transition:none}}
+
+section{scroll-margin-top:96px}
+#upcycle .sec-head{max-width:none}
+#upcycle .sec-head p{max-width:720px}
+#upcycle .sec-head b{white-space:nowrap}
+.pf-group{display:grid;gap:8px;margin-bottom:14px}
+.pf-group:last-child{margin-bottom:0}
+.pf-tag{justify-self:start;font-size:12.5px;font-weight:800;padding:2px 10px;border-radius:999px}
+.pf-tag.base{background:#E3EEF8;color:var(--brand)}
+.pf-tag.opt{background:#FFF4D6;color:#8A5A00}
+.pf-cond{display:inline-block;font-size:12px;font-weight:700;color:#8A5A00;background:#FFF8E6;border:1px solid #F2DDA4;border-radius:6px;padding:0 7px;margin-left:4px;vertical-align:1px}
+.up-list small{display:block;font-size:12.5px;color:var(--muted);margin-top:2px}

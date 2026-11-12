@@ -75,6 +75,12 @@
     modal('<div class="viewer"><img src="' + photoUrl(c.photos[+t.dataset.i]) + '" alt="' + esc(c.title) + '"></div><button class="btn btn-line" data-close>닫기</button>');
   });
 
+  /* 업싸이클링 사진 크게 보기 */
+  document.addEventListener('click', function (e) {
+    var b = e.target.closest('[data-up]'); if (!b) return;
+    modal('<div class="viewer"><img src="/assets/upcycle/' + b.dataset.up + '.jpg" alt="마하파킹 업싸이클링 시공 현장"></div><button class="btn btn-line" data-close>닫기</button>');
+  });
+
   /* ---------- 상담 신청 ---------- */
   var cPhotos = [];
   $('c-photo').addEventListener('change', function () {
