@@ -25,7 +25,11 @@
     if (view === 'home') loadCases(function () { renderHomeCases(); });
     if (view === 'products') loadProducts(renderProducts);
     if (view === 'cases') loadCases(renderCases);
-    if (anchor) setTimeout(function () { var el = $(anchor); if (el) el.scrollIntoView({ behavior: 'smooth' }); }, 30);
+    if (anchor) setTimeout(function () {
+      var el = $(anchor); if (!el) return;
+      var hd = document.querySelector('header'), hh = hd ? hd.offsetHeight : 0;   // 위에 고정된 메뉴에 가리지 않게
+      window.scrollTo({ top: el.getBoundingClientRect().top + window.scrollY - hh - 12, behavior: 'smooth' });
+    }, 30);
     else window.scrollTo(0, 0);
   }
   function route() { show((location.hash || '#home').slice(1)); }
