@@ -14,6 +14,9 @@
 .login{min-height:calc(100vh - 92px);display:grid;place-items:center;padding:24px;background:var(--navy)}
 .login .form{width:100%;max-width:380px}
 .req-photos{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px}
+.acc-row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.acc-list{list-style:none;margin:0;padding:0;display:grid;gap:8px}
+.acc-list li{display:flex;gap:10px;align-items:center;justify-content:space-between;border:1px solid var(--line);border-radius:10px;padding:10px 12px}
 .req-photos img{width:52px;height:52px;object-fit:cover;border-radius:6px;cursor:zoom-in}
 </style>
 </head>
@@ -86,7 +89,12 @@
         <button class="btn btn-line btn-sm" type="button" data-add="custom">+ 직접 입력</button>
       </div>
       <div class="totals" id="q-totals"></div>
-      <label class="f" for="q-note" style="margin-top:16px">하단 안내 <span class="hint">(입금계좌 등, 견적서 맨 아래 칸에 들어갑니다)</span><textarea id="q-note" style="min-height:70px"></textarea></label>
+      <div class="acc-row" style="margin-top:16px">
+        <label style="display:inline-flex;gap:8px;align-items:center;font-weight:700;font-size:14px"><input type="checkbox" id="q-acc-on" style="width:18px;height:18px"> 입금계좌 표시</label>
+        <select id="q-acc" aria-label="입금계좌 선택" style="width:auto;min-width:300px"></select>
+        <button class="btn btn-line btn-sm" type="button" id="acc-manage">계좌 관리</button>
+      </div>
+      <label class="f" for="q-note" style="margin-top:12px">&lt;비 고&gt; <span class="hint">(작업 일정, 보증 기간, 기타 참고 사항 등 · 입금계좌는 위에서 고르면 자동으로 들어갑니다)</span><textarea id="q-note" style="min-height:110px" placeholder="예) ** 작업은 승인 후 3일 이내 진행됩니다.&#10;** 교체 부품 1년 무상 보증"></textarea></label>
       <div class="btns" style="margin-top:16px">
         <button class="btn btn-cta" type="button" id="q-send">견적서 메일 보내기</button>
         <button class="btn btn-line" type="button" id="q-save">저장만 하기</button>
