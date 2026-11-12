@@ -421,10 +421,12 @@
     $('ord-save').onclick = function () {
       var btn = this; btn.disabled = true;
       var removed = c.photos.filter(function (p) { return list.indexOf(p) < 0; });
-      sb.from('cases').update({ photos: list }).eq('id', c.id).then(function (r) {
-        if (r.error) { btn.disabled = false; $('ord-msg').textContent = '저장하지 못했습니다: ' + r.error.message; return; }
+      sb.from('cases').update({ photos: list }).eq('id', c.id).select('id,photos').then(function (r) {
+        if (r.error || !r.data || !r.data.length) { btn.disabled = false; $('ord-msg').textContent = '저장하지 못했습니다. ' + (r.error ? r.error.message : '다시 로그인한 뒤 시도해 주세요.'); return; }
+        list = r.data[0].photos;
         if (removed.length) sb.storage.from('case-photos').remove(removed).then(function () {});
         c.photos = list.slice(); closeModal(); drawCaseAdmin();
+        modal('<h3>저장했습니다</h3><p>대표 사진과 순서를 바꿨습니다. 홈페이지를 <b>Ctrl + F5</b>로 새로고침하면 바뀐 사진이 나옵니다.</p><button class="btn btn-primary" data-close>확인</button>');
       });
     };
   }
