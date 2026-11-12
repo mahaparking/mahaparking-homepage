@@ -265,3 +265,23 @@ footer strong{color:#fff;font-family:var(--font-display);font-size:18px}
 
 /* 견적서 표 마지막 줄 테두리 */
 .doc tr:last-child td{border-bottom:1px solid #D8DEE4}
+
+/* ===== 견적서 양식 (마하파킹 기존 양식) ===== */
+.qdoc{background:#fff;color:#111;width:760px;padding:34px 34px 30px;box-sizing:border-box;font-family:"Noto Sans KR","Malgun Gothic","Apple SD Gothic Neo",sans-serif;font-size:13px;line-height:1.6}
+.qdoc h1{text-align:center;font-size:32px;font-weight:800;letter-spacing:.45em;text-indent:.45em;text-decoration:underline;text-decoration-thickness:3px;text-underline-offset:9px;margin:4px 0 44px}
+.qdoc .top{display:flex;justify-content:space-between;align-items:flex-end;gap:16px}
+.qdoc table.kv{border-collapse:collapse;width:auto;min-width:0}
+.qdoc table.kv td{padding:1px 0;border:0;background:none;font-size:12.5px;font-weight:700;vertical-align:top;color:#111}
+.qdoc table.kv td.k{white-space:nowrap;padding-right:4px}
+.qdoc .right{max-width:390px}
+.qdoc .logo{height:58px;display:block;margin:0 0 10px auto}
+.qdoc .seal{font-weight:500;color:#5A6873;margin-left:6px}
+.qdoc .lead{font-weight:700;margin:24px 0 10px;font-size:13px}
+.qdoc table.grid{width:100%;border-collapse:collapse;min-width:0;font-size:12px}
+.qdoc table.grid th,.qdoc table.grid td{border:1px solid #333;padding:15px 8px;background:#fff;color:#111;font-weight:400;font-size:12px;vertical-align:middle}
+.qdoc table.grid th{font-weight:700;text-align:center;padding:12px 6px}
+.qdoc table.grid tr:last-child td{border-bottom:1px solid #333}
+.qdoc table.grid .c{text-align:center}
+.qdoc table.grid .r{text-align:right;font-variant-numeric:tabular-nums}
+.qdoc table.grid .b{font-weight:700}
+.qdoc table.grid td.note{white-space:pre-line;text-align:left;vertical-align:top;height:90px;font-size:12.5px;padding:24px 4px 10px}

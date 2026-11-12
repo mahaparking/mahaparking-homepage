@@ -105,22 +105,23 @@
 
   /* ---------- 견적서 ---------- */
   var Q;
-  function blankQuote() { return { id: null, quote_no: null, request_id: null, customer_name: '', customer_email: '', customer_phone: '', quote_date: today(), valid_days: 15, note: '부가세 별도 금액에 부가세 10%를 더한 합계입니다.\n현장 상황에 따라 작업 내용이 바뀌면 다시 안내드립니다.', rows: [{ pid: '', name: '', qty: 1, price: 0, disc: false }], sent_at: null }; }
+  function blankQuote() { return { id: null, quote_no: null, request_id: null, customer_name: '', contact: '', customer_email: '', customer_phone: '', title: '', delivery: '협의', quote_date: today(), valid_days: 30, note: '** 입금계좌\n기업은행 137-072961-02-017 조상현', rows: [blankRow()], sent_at: null }; }
+  function blankRow() { return { pid: '', name: '', spec: '', qty: 1, price: 0, note: '', disc: false }; }
   function product(id) { return D.products.filter(function (p) { return p.id === id; })[0]; }
   function findFee(word) { return D.products.filter(function (p) { return p.name.indexOf(word) >= 0; })[0]; }
-  function rowFrom(p) { return p ? { pid: p.id, name: p.name, qty: 1, price: p.price, disc: false } : { pid: '', name: '', qty: 1, price: 0, disc: false }; }
+  function rowFrom(p) { var r = blankRow(); if (p) { r.pid = p.id; r.name = p.name; r.price = p.price; } return r; }
   function startQuote(reqId) {
     var r = D.requests.filter(function (x) { return x.id === reqId; })[0];
     Q = blankQuote();
     if (r) {
-      Q.request_id = r.id; Q.customer_name = r.name; Q.customer_email = r.email; Q.customer_phone = r.phone;
-      var rows = (r.items || []).map(function (it) { var p = product(it.product_id); var row = rowFrom(p); if (!p) row.name = it.name || ''; row.qty = it.qty || 1; if (it.length) row.name += ' (' + it.length + 'm)'; return row; });
+      Q.request_id = r.id; Q.customer_name = r.name; Q.customer_email = r.email; Q.customer_phone = r.phone; if ((r.items || []).length) Q.title = (r.items[0].name || '') + (r.items.length > 1 ? ' 외' : '');
+      var rows = (r.items || []).map(function (it) { var p = product(it.product_id); var row = rowFrom(p); if (!p) row.name = it.name || ''; row.qty = it.qty || 1; if (it.length) row.spec = it.length + 'm'; return row; });
       if (rows.length) Q.rows = rows;
     }
     tab = 'quote'; render();
   }
   function loadQuote(q) {
-    Q = { id: q.id, quote_no: q.quote_no, request_id: q.request_id, customer_name: q.customer_name, customer_email: q.customer_email, customer_phone: q.customer_phone, quote_date: q.quote_date, valid_days: q.valid_days, note: q.note, rows: (q.items || []).map(function (x) { return { pid: x.pid || '', name: x.name, qty: x.qty, price: x.price, disc: !!x.disc }; }), sent_at: q.sent_at };
+    Q = { id: q.id, quote_no: q.quote_no, request_id: q.request_id, customer_name: q.customer_name, contact: q.contact || '', customer_email: q.customer_email, customer_phone: q.customer_phone, title: q.title || '', delivery: q.delivery || '협의', quote_date: q.quote_date, valid_days: q.valid_days, note: q.note, rows: (q.items || []).map(function (x) { var r = blankRow(); r.pid = x.pid || ''; r.name = x.name || ''; r.spec = x.spec || ''; r.qty = x.qty; r.price = x.price; r.note = x.note || ''; r.disc = !!x.disc; return r; }), sent_at: q.sent_at };
     if (!Q.rows.length) Q.rows.push(rowFrom(null));
     tab = 'quote'; render(); window.scrollTo(0, 0);
   }
@@ -136,13 +137,15 @@
   function calc() { var sup = 0; Q.rows.forEach(function (r) { sup += (r.disc ? -1 : 1) * Math.abs((+r.qty || 0) * (+r.price || 0)); }); var vat = Math.round(sup * 0.1); return { sup: sup, vat: vat, tot: sup + vat }; }
   function drawQuote() {
     if (!Q) Q = blankQuote();
-    $('q-name').value = Q.customer_name; $('q-email').value = Q.customer_email; $('q-phone').value = Q.customer_phone;
+    $('q-name').value = Q.customer_name; $('q-contact').value = Q.contact; $('q-email').value = Q.customer_email; $('q-phone').value = Q.customer_phone; $('q-title').value = Q.title; $('q-delivery').value = Q.delivery;
     $('q-date').value = Q.quote_date; $('q-valid').value = String(Q.valid_days); $('q-note').value = Q.note;
     $('q-body').innerHTML = Q.rows.map(function (r, i) {
-      return '<tr><td><select data-i="' + i + '" data-k="pid" aria-label="항목 선택">' + optList(r.pid) + '</select><input data-i="' + i + '" data-k="name" value="' + esc(r.name) + '" placeholder="항목 이름" aria-label="항목 이름" style="margin-top:6px">' + (r.disc ? '<span class="status st-new" style="margin-top:6px">할인</span>' : '') + '</td>' +
-        '<td><input data-i="' + i + '" data-k="qty" type="number" min="0" step="any" value="' + r.qty + '" aria-label="수량"></td>' +
-        '<td class="num"><input data-i="' + i + '" data-k="price" inputmode="numeric" value="' + won(r.price) + '" style="text-align:right" aria-label="단가"></td>' +
+      return '<tr><td><select data-i="' + i + '" data-k="pid" aria-label="품목 선택">' + optList(r.pid) + '</select><input data-i="' + i + '" data-k="name" value="' + esc(r.name) + '" placeholder="품목 이름" aria-label="품목 이름" style="margin-top:6px">' + (r.disc ? '<span class="status st-new" style="margin-top:6px">할인</span>' : '') + '</td>' +
+        '<td><input data-i="' + i + '" data-k="spec" value="' + esc(r.spec) + '" placeholder="예) 상단LED / 2.7m" aria-label="상세스펙"></td>' +
+        '<td><input data-i="' + i + '" data-k="qty" type="number" min="0" step="any" value="' + r.qty + '" aria-label="총수량"></td>' +
+        '<td class="num"><input data-i="' + i + '" data-k="price" inputmode="numeric" value="' + won(r.price) + '" style="text-align:right" aria-label="공급단가"></td>' +
         '<td class="num" id="amt-' + i + '">' + (r.disc ? '-' : '') + won(Math.abs(r.qty * r.price)) + '</td>' +
+        '<td><input data-i="' + i + '" data-k="note" value="' + esc(r.note) + '" aria-label="비고"></td>' +
         '<td><button class="row-del" type="button" data-del="' + i + '" aria-label="줄 삭제">×</button></td></tr>';
     }).join('');
     [].forEach.call($('q-body').querySelectorAll('[data-k]'), function (el) {
@@ -157,32 +160,43 @@
       });
       if (el.dataset.k === 'price') el.addEventListener('blur', function () { el.value = won(Q.rows[+el.dataset.i].price); });
     });
-    [].forEach.call($('q-body').querySelectorAll('[data-del]'), function (b) { b.onclick = function () { Q.rows.splice(+b.dataset.del, 1); if (!Q.rows.length) Q.rows.push(rowFrom(null)); drawQuote(); }; });
+    [].forEach.call($('q-body').querySelectorAll('[data-del]'), function (b) { b.onclick = function () { Q.rows.splice(+b.dataset.del, 1); if (!Q.rows.length) Q.rows.push(blankRow()); drawQuote(); }; });
     $('q-msg').textContent = Q.quote_no ? '불러온 견적서: ' + Q.quote_no + (Q.sent_at ? ' (발송 ' + dot(Q.sent_at) + ')' : '') : '새 견적서입니다. 저장하면 견적번호가 붙습니다.';
     drawTotals(); drawQuoteList();
   }
   function drawTotals() {
     var t = calc();
-    $('q-totals').innerHTML = '<div><span>공급가액</span><span>' + won(t.sup) + '원</span></div><div><span>부가세 (10%)</span><span>' + won(t.vat) + '원</span></div><div class="grand"><span>합계</span><span>' + won(t.tot) + '원</span></div>';
+    $('q-totals').innerHTML = '<div class="grand"><span>합계 (VAT별도)</span><span>' + won(t.sup) + '원</span></div><div><span>참고: 부가세 포함</span><span>' + won(t.tot) + '원</span></div>';
     $('q-doc').innerHTML = docHtml(Q.quote_no || '(저장 시 부여)');
   }
-  function validDate() { var d = new Date((Q.quote_date || today()) + 'T00:00:00'); d.setDate(d.getDate() + (+Q.valid_days || 15)); return d.getFullYear() + '.' + String(d.getMonth() + 1).padStart(2, '0') + '.' + String(d.getDate()).padStart(2, '0'); }
+  function validDate() { var d = new Date((Q.quote_date || today()) + 'T00:00:00'); d.setDate(d.getDate() + (+Q.valid_days || 30)); return d.getFullYear() + '.' + String(d.getMonth() + 1).padStart(2, '0') + '.' + String(d.getDate()).padStart(2, '0'); }
+  function validText() { var v = +Q.valid_days || 30; return '견적 후 ' + (v % 30 === 0 ? (v / 30) + '개월' : v + '일') + ' (이후 협의)'; }
   function docHtml(no) {
-    var t = calc();
-    return '<h2>견적서</h2><div class="doc-head"><div><b>' + esc(Q.customer_name || '고객명') + '</b> 귀하<br>견적번호 ' + esc(no) + '<br>견적일 ' + dot(Q.quote_date) + '<br>유효기간 ' + validDate() + '까지</div>' +
-      '<div><img src="/assets/logo-h-blue.png" alt="마하파킹" style="height:34px;display:block;margin-bottom:4px">주차장비 유지보수 &amp; 업싸이클링<br>' + MAHA.PHONE + '<br>' + MAHA.EMAIL + '<br><span style="font-size:11.5px;color:#5A6873">대표 조상현 · 사업자 273-11-02830<br>경기도 안양시 만안구 만안로 31-3, 9층 911호</span></div></div>' +
-      '<table><thead><tr><th>항목</th><th class="num">수량</th><th class="num">단가</th><th class="num">금액</th></tr></thead><tbody>' +
-      Q.rows.filter(function (r) { return r.name || r.price; }).map(function (r) { return '<tr><td>' + esc(r.name) + '</td><td class="num">' + r.qty + '</td><td class="num">' + (r.disc ? '-' : '') + won(r.price) + '</td><td class="num">' + (r.disc ? '-' : '') + won(Math.abs(r.qty * r.price)) + '</td></tr>'; }).join('') +
-      '</tbody></table><div style="margin-top:8px;text-align:right;font-variant-numeric:tabular-nums">공급가액 ' + won(t.sup) + '원 · 부가세 ' + won(t.vat) + '원</div><div class="sum">합계 금액 ' + won(t.tot) + '원 (부가세 포함)</div>' + (Q.note ? '<div class="foot">' + esc(Q.note) + '</div>' : '');
+    var t = calc(), rows = Q.rows.filter(function (r) { return r.name || r.price; });
+    var kv = function (k, v) { return '<tr><td class="k">' + k + '</td><td>:&nbsp; ' + v + '</td></tr>'; };
+    return '<h1>견 적 서</h1>' +
+      '<div class="top"><table class="kv">' +
+        kv('견적 번호', esc(no)) + '<tr><td colspan="2" style="height:14px"></td></tr>' +
+        kv('수신 업체', esc(Q.customer_name)) + kv('담당자 명', esc(Q.contact)) + kv('견적 일자', esc(Q.quote_date)) +
+        kv('납&emsp;&emsp;품', esc(Q.delivery || '협의')) + kv('금&emsp;&emsp;액', '하기 참조') + kv('유효 기간', validText()) +
+      '</table><div class="right"><img class="logo" src="/assets/logo-h-blue.png" alt="마하파킹"><table class="kv">' +
+        kv('상&emsp;&emsp;호', '마하파킹 (273-11-02830)') + kv('주&emsp;&emsp;소', '경기도 안양시 만안구 만안로31-3 인터비즈 911호') +
+        kv('대&emsp;&emsp;표', '조 상 현 <span class="seal">(직인생략)</span>') + kv('전화 번호', MAHA.PHONE) +
+      '</table></div></div>' +
+      '<p class="lead">하기와 같이 ' + esc(Q.title || '요청하신 작업') + '에 대해 견적 합니다.</p>' +
+      '<table class="grid"><thead><tr><th style="width:44px">NO</th><th>품목</th><th>상세스펙</th><th style="width:84px">공급단가</th><th style="width:56px">총수량</th><th style="width:96px">견적가격</th><th style="width:110px">비고</th></tr></thead><tbody>' +
+      rows.map(function (r, i) { var sg = r.disc ? '-' : ''; return '<tr><td class="c b">' + (i + 1) + '</td><td class="c">' + esc(r.name) + '</td><td>' + esc(r.spec) + '</td><td class="r">' + sg + won(r.price) + '</td><td class="r b">' + r.qty + '</td><td class="r b">' + sg + won(Math.abs(r.qty * r.price)) + '</td><td>' + esc(r.note) + '</td></tr>'; }).join('') +
+      '<tr><td colspan="5" class="c b">합&nbsp; 계 (VAT별도)</td><td class="r b">' + won(t.sup) + '</td><td></td></tr>' +
+      '<tr><td colspan="7" class="note">' + esc(Q.note) + '</td></tr></tbody></table>';
   }
-  var QF = { 'q-name': 'customer_name', 'q-email': 'customer_email', 'q-phone': 'customer_phone', 'q-date': 'quote_date', 'q-valid': 'valid_days', 'q-note': 'note' };
-  Object.keys(QF).forEach(function (id) { $(id).addEventListener('input', function () { Q[QF[id]] = id === 'q-valid' ? +this.value : this.value; drawTotals(); }); });
+  var QF = { 'q-name': 'customer_name', 'q-contact': 'contact', 'q-email': 'customer_email', 'q-phone': 'customer_phone', 'q-title': 'title', 'q-delivery': 'delivery', 'q-date': 'quote_date', 'q-valid': 'valid_days', 'q-note': 'note' };
+  Object.keys(QF).forEach(function (id) { $(id).addEventListener(id === 'q-valid' ? 'change' : 'input', function () { Q[QF[id]] = id === 'q-valid' ? +this.value : this.value; drawTotals(); }); });
   [].forEach.call(document.querySelectorAll('[data-add]'), function (b) {
     b.onclick = function () {
       var k = b.dataset.add, row;
       if (k === 'travel') row = rowFrom(findFee('출장'));
       else if (k === 'install') row = rowFrom(findFee('설치비'));
-      else if (k === 'discount') row = { pid: '', name: '할인', qty: 1, price: 0, disc: true };
+      else if (k === 'discount') { row = blankRow(); row.name = '할인'; row.disc = true; }
       else row = rowFrom(null);
       if (k === 'travel' && !row.name) row.name = '출장비';
       if (k === 'install' && !row.name) row.name = '설치비';
@@ -193,17 +207,17 @@
   });
   $('q-reset').onclick = function () { Q = blankQuote(); drawQuote(); };
   function nextQuoteNo() {
-    var d = (Q.quote_date || today()).replace(/-/g, ''), pre = 'Q-' + d + '-';
+    var pre = 'mahap-' + (Q.quote_date || today()).replace(/-/g, '') + '-';
     return sb.from('quotes').select('quote_no').like('quote_no', pre + '%').then(function (r) {
       var n = 0; (r.data || []).forEach(function (x) { n = Math.max(n, parseInt(x.quote_no.slice(pre.length), 10) || 0); });
       return pre + String(n + 1).padStart(2, '0');
     });
   }
   function saveQuote() {
-    if (!Q.customer_name && !Q.customer_email) { fail('고객 이름이나 이메일을 적어 주세요.'); return Promise.reject(); }
+    if (!Q.customer_name && !Q.customer_email) { fail('수신 업체나 이메일을 적어 주세요.'); return Promise.reject(); }
     if (!Q.rows.some(function (r) { return r.price > 0; })) { fail('금액이 들어간 항목이 없습니다. 단가를 적어 주세요.'); return Promise.reject(); }
     var t = calc();
-    var rec = { request_id: Q.request_id, customer_name: Q.customer_name, customer_email: Q.customer_email, customer_phone: Q.customer_phone, quote_date: Q.quote_date || today(), valid_days: +Q.valid_days || 15, items: Q.rows.filter(function (r) { return r.name || r.price; }), supply: t.sup, vat: t.vat, total: t.tot, note: Q.note };
+    var rec = { request_id: Q.request_id, customer_name: Q.customer_name, contact: Q.contact, title: Q.title, delivery: Q.delivery || '협의', customer_email: Q.customer_email, customer_phone: Q.customer_phone, quote_date: Q.quote_date || today(), valid_days: +Q.valid_days || 30, items: Q.rows.filter(function (r) { return r.name || r.price; }), supply: t.sup, vat: t.vat, total: t.tot, note: Q.note };
     var p = Q.id ? sb.from('quotes').update(rec).eq('id', Q.id).select().single()
       : nextQuoteNo().then(function (no) { rec.quote_no = no; return sb.from('quotes').insert(rec).select().single(); });
     return p.then(function (r) {
@@ -220,14 +234,14 @@
   function printQuote(q) {
     var w = window.open('', '_blank');
     if (!w) { fail('팝업이 막혀 있습니다. 브라우저 주소창 오른쪽에서 이 사이트의 팝업을 허용해 주세요.'); return; }
-    var css = '<link rel="stylesheet" href="/assets/site.css"><style>body{background:#fff;padding:20px}.doc{border:0;box-shadow:none;max-width:760px;margin:0 auto;font-size:14px}@page{size:A4;margin:14mm}</style>';
-    w.document.write('<!DOCTYPE html><html lang="ko"><head><meta charset="utf-8"><title>마하파킹_견적서_' + esc(q.quote_no) + '</title>' + css + '</head><body><div class="doc">' + docHtml(q.quote_no) + '</div><script>window.onload=function(){setTimeout(function(){window.print();},300);};<\/script></body></html>');
+    var css = '<link rel="stylesheet" href="/assets/site.css"><style>body{background:#fff;padding:0}.qdoc{margin:0 auto}@page{size:A4;margin:10mm}</style>';
+    w.document.write('<!DOCTYPE html><html lang="ko"><head><meta charset="utf-8"><title>마하파킹_견적서_' + esc(q.quote_no) + '</title>' + css + '</head><body><div class="qdoc">' + docHtml(q.quote_no) + '</div><script>window.onload=function(){setTimeout(function(){window.print();},300);};<\/script></body></html>');
     w.document.close();
   }
   $('q-print').onclick = function () { saveQuote().then(printQuote).catch(function () {}); };
   function mailQuote(q) {
     var t = calc();
-    var body = Q.customer_name + '님, 안녕하세요. 마하파킹입니다.\n\n요청하신 작업의 견적서를 첨부해 보내 드립니다.\n· 견적번호: ' + q.quote_no + '\n· 합계 금액: ' + won(t.tot) + '원 (부가세 포함)\n· 유효기간: ' + validDate() + '까지\n\n궁금하신 점은 이 메일에 답장하시거나 ' + MAHA.PHONE + '으로 연락 주세요.\n\n마하파킹 드림\n' + MAHA.PHONE + ' · ' + MAHA.EMAIL;
+    var body = Q.customer_name + '님, 안녕하세요. 마하파킹입니다.\n\n요청하신 작업의 견적서를 첨부해 보내 드립니다.\n· 견적번호: ' + q.quote_no + '\n· 합계 금액: ' + won(t.sup) + '원 (VAT별도)\n· 유효기간: ' + validDate() + '까지\n\n궁금하신 점은 이 메일에 답장하시거나 ' + MAHA.PHONE + '으로 연락 주세요.\n\n마하파킹 드림\n' + MAHA.PHONE + ' · ' + MAHA.EMAIL;
     var subject = '[마하파킹] 요청하신 견적서를 보내 드립니다 (' + q.quote_no + ')';
     modal('<h3>고객에게 메일 보내기</h3><ol style="margin:0;padding-left:20px;line-height:1.8"><li><b>PDF 저장 · 인쇄</b>로 견적서를 PDF 파일로 저장합니다.</li><li>아래 <b>메일 앱 열기</b>를 누르거나, 내용을 복사해 하이웍스 메일에 붙여 넣습니다.</li><li>저장한 PDF를 첨부해 보냅니다.</li><li>보낸 뒤 <b>발송 완료로 표시</b>를 누릅니다.</li></ol>' +
       '<div class="mail"><div class="mh"><span>받는 곳</span><span>' + esc(Q.customer_email || '(이메일 없음)') + '</span><span>제목</span><span>' + esc(subject) + '</span></div><div style="white-space:pre-line">' + esc(body) + '</div></div>' +
@@ -257,8 +271,8 @@
   function makePdfBase64(q) {
     return pdfLibs().then(function () {
       var box = document.createElement('div');
-      box.className = 'doc';
-      box.style.cssText = 'position:fixed;left:-10000px;top:0;width:760px;font-size:14px;border:0;box-shadow:none;background:#fff';
+      box.className = 'qdoc';
+      box.style.cssText = 'position:fixed;left:-10000px;top:0';
       box.innerHTML = docHtml(q.quote_no);
       document.body.appendChild(box);
       var imgs = [].slice.call(box.querySelectorAll('img'));
@@ -267,10 +281,10 @@
         .then(function (canvas) {
           document.body.removeChild(box);
           var pdf = new window.jspdf.jsPDF({ unit: 'mm', format: 'a4' });
-          var w = 182, h = canvas.height * w / canvas.width, pageH = 269;
+          var w = 190, h = canvas.height * w / canvas.width, pageH = 277;
           var img = canvas.toDataURL('image/jpeg', 0.92);
-          if (h <= pageH) pdf.addImage(img, 'JPEG', 14, 14, w, h);
-          else { var y = 0; while (y < h) { if (y > 0) pdf.addPage(); pdf.addImage(img, 'JPEG', 14, 14 - y, w, h); y += pageH; } }
+          if (h <= pageH) pdf.addImage(img, 'JPEG', 10, 10, w, h);
+          else { var y = 0; while (y < h) { if (y > 0) pdf.addPage(); pdf.addImage(img, 'JPEG', 10, 10 - y, w, h); y += pageH; } }
           return pdf.output('datauristring').split(',')[1];
         }, function (e) { if (box.parentNode) document.body.removeChild(box); throw e; });
     });
@@ -280,7 +294,7 @@
     if (!Q.customer_email || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(Q.customer_email)) { fail('받는 이메일 주소를 확인해 주세요.'); return; }
     saveQuote().then(function (q) {
       var t = calc();
-      modal('<h3>견적서를 메일로 보낼까요?</h3><div class="mail"><div class="mh"><span>받는 곳</span><span>' + esc(Q.customer_email) + '</span><span>보내는 곳</span><span>마하파킹 &lt;' + MAHA.EMAIL + '&gt;</span><span>제목</span><span>[마하파킹] 요청하신 견적서를 보내 드립니다 (' + esc(q.quote_no) + ')</span><span>첨부</span><span>마하파킹_견적서_' + esc(q.quote_no) + '.pdf</span></div>합계 <b>' + won(t.tot) + '원</b> (부가세 포함)<br><span class="hint">대표님 메일함(' + MAHA.EMAIL + ')에도 사본이 함께 갑니다.</span></div><div class="btns"><button class="btn btn-cta" id="do-send">보내기</button><button class="btn btn-line" data-close>취소</button></div><p class="hint" id="send-msg" role="status"></p>');
+      modal('<h3>견적서를 메일로 보낼까요?</h3><div class="mail"><div class="mh"><span>받는 곳</span><span>' + esc(Q.customer_email) + '</span><span>보내는 곳</span><span>마하파킹 &lt;' + MAHA.EMAIL + '&gt;</span><span>제목</span><span>[마하파킹] 요청하신 견적서를 보내 드립니다 (' + esc(q.quote_no) + ')</span><span>첨부</span><span>마하파킹_견적서_' + esc(q.quote_no) + '.pdf</span></div>합계 <b>' + won(t.sup) + '원</b> (VAT별도)<br><span class="hint">대표님 메일함(' + MAHA.EMAIL + ')에도 사본이 함께 갑니다.</span></div><div class="btns"><button class="btn btn-cta" id="do-send">보내기</button><button class="btn btn-line" data-close>취소</button></div><p class="hint" id="send-msg" role="status"></p>');
       $('do-send').onclick = function () {
         var b = this; b.disabled = true; $('send-msg').textContent = '견적서 PDF를 만들고 있습니다...';
         makePdfBase64(q).then(function (pdf) {
