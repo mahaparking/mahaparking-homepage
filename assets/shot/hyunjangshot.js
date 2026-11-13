@@ -336,14 +336,20 @@ async function makeVideo() {
   try {
     const scenes = sceneList();
     let endVoice = null;
+    let voiceNote = '';
     if (S.voice !== 'none') {
       out.innerHTML = '<p class="hint">내레이션 음성을 만드는 중입니다...</p>';
       const lines = S.scenes.map((sc) => (sc.narration || '').trim());
       const withEnd = S.ending !== 'none' && S.endNarration.trim();
-      const clips = await tts(withEnd ? lines.concat([S.endNarration.trim()]) : lines, S.voice);
-      scenes.forEach((sc, i) => { sc.voice = clips[i]; });
-      if (withEnd) endVoice = clips[lines.length];
-      out.innerHTML = '<p class="hint">영상을 만드는 중입니다. 영상 길이만큼 시간이 걸립니다. <b>화면을 끄거나 다른 앱으로 넘어가지 마세요.</b></p>';
+      try {
+        const clips = await tts(withEnd ? lines.concat([S.endNarration.trim()]) : lines, S.voice);
+        scenes.forEach((sc, i) => { sc.voice = clips[i]; });
+        if (withEnd) endVoice = clips[lines.length];
+      } catch (e) {
+        // 음성 키가 아직 없거나 오류가 나도 영상은 음성 없이 계속 만든다
+        voiceNote = `<p class="notice">음성을 만들지 못해 이번 영상은 음성 없이 만듭니다. (${esc(e.message)})</p>`;
+      }
+      out.innerHTML = voiceNote + '<p class="hint">영상을 만드는 중입니다. 영상 길이만큼 시간이 걸립니다. <b>화면을 끄거나 다른 앱으로 넘어가지 마세요.</b></p>';
     }
     const { blob, mimeType } = await renderShorts({
       headline: S.headline,
@@ -362,7 +368,7 @@ async function makeVideo() {
     const url = URL.createObjectURL(blob);
     const file = new File([blob], name, { type: blob.type });
     const canShare = navigator.canShare && navigator.canShare({ files: [file] });
-    out.innerHTML = `<video src="${url}" controls playsinline class="shot-video-el"></video>
+    out.innerHTML = voiceNote + `<video src="${url}" controls playsinline class="shot-video-el"></video>
       <div class="btns" style="margin-top:10px">
         <a class="btn btn-primary" href="${url}" download="${esc(name)}">휴대폰에 저장</a>
         ${canShare ? '<button type="button" class="btn btn-cta" id="shot-share">유튜브·인스타·틱톡으로 보내기</button>' : ''}
