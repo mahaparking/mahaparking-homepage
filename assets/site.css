@@ -382,3 +382,8 @@ section{scroll-margin-top:96px}
 .st-track i{display:block;height:100%;background:var(--brand);border-radius:5px}
 .st-n{font-weight:700;min-width:70px;text-align:right}
 .st-n small{color:var(--muted);font-weight:500;margin-left:6px;font-size:12px}
+
+/* 관리자 바로가기 */
+.foot-end{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}
+.admin-link{font-size:12px;letter-spacing:.08em;color:#B7C6D3;border:1px solid rgba(183,198,211,.35);border-radius:6px;padding:4px 10px;text-decoration:none;opacity:.7}
+.admin-link:hover{opacity:1;color:#fff;border-color:#fff}
