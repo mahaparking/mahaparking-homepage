@@ -1,4 +1,5 @@
 User-agent: *
 Disallow: /admin/
+Disallow: /reports/
 
 Sitemap: https://www.mahaparking.co.kr/sitemap.xml

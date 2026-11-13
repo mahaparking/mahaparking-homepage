@@ -60,6 +60,7 @@
     if (tab === 'caseup') drawCaseAdmin();
     if (tab === 'prices') drawPrices();
     if (tab === 'stats') drawStats();
+    if (tab === 'market') drawMarket();
   }
   [].forEach.call(document.querySelectorAll('#admin-tabs button'), function (b) { b.onclick = function () { tab = b.dataset.tab; render(); }; });
 
@@ -617,6 +618,53 @@
       flash('항목을 추가했습니다. 이름과 단가를 적어 주세요.');
     });
   };
+
+  /* ---------- 시장 동향 보고 (reports/*.json, 매일 아침 Claude 비서가 추가) ---------- */
+  var MK = { list: null, cur: null, cache: {} };
+  var safeUrl = function (u) { return /^https?:\/\//i.test(u || '') ? u : ''; };
+  var mkSeen = function () { try { return localStorage.getItem('maha_mk_seen') || ''; } catch (e) { return ''; } };
+  function mkLoadList(cb) {
+    fetch('/reports/index.json?t=' + Date.now(), { cache: 'no-store' }).then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); }).then(function (j) {
+      MK.list = (j.reports || []).slice().sort(function (a, b) { return a.date < b.date ? 1 : -1; });
+      var latest = MK.list[0];
+      $('mk-badge').classList.toggle('hidden', !(latest && latest.date > mkSeen()));
+      cb && cb();
+    }).catch(function (e) { MK.list = []; $('mk-msg').textContent = '보고서 목록을 불러오지 못했습니다. (' + e.message + ')'; cb && cb(); });
+  }
+  function mkWeek(d) { return '일월화수목금토'.charAt(new Date(d + 'T00:00:00').getDay()); }
+  function drawMarket() {
+    if (!MK.list) { $('mk-view').innerHTML = '<p class="hint">불러오고 있습니다...</p>'; return mkLoadList(drawMarket); }
+    if (!MK.list.length) { $('mk-date').innerHTML = ''; $('mk-view').innerHTML = '<p class="hint">아직 보고서가 없습니다. 매일 아침 06:47 이후에 새 보고서가 올라옵니다.</p>'; return; }
+    if (!MK.cur) MK.cur = MK.list[0].date;
+    $('mk-date').innerHTML = MK.list.map(function (r) { return '<option value="' + esc(r.date) + '"' + (r.date === MK.cur ? ' selected' : '') + '>' + dot(r.date) + ' (' + mkWeek(r.date) + ')' + (r === MK.list[0] ? ' · 최신' : '') + '</option>'; }).join('');
+    var meta = MK.list.filter(function (r) { return r.date === MK.cur; })[0];
+    if (MK.cache[MK.cur]) return mkRender(MK.cache[MK.cur]);
+    $('mk-view').innerHTML = '<p class="hint">불러오고 있습니다...</p>';
+    fetch('/reports/' + encodeURIComponent(meta.file || (MK.cur + '.json')) + '?t=' + Date.now(), { cache: 'no-store' }).then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+      .then(function (j) { MK.cache[MK.cur] = j; mkRender(j); })
+      .catch(function (e) { $('mk-view').innerHTML = '<p class="hint">보고서를 열지 못했습니다. (' + esc(e.message) + ')</p>'; });
+  }
+  function mkRender(R) {
+    if (MK.list[0] && R.date === MK.list[0].date) { try { localStorage.setItem('maha_mk_seen', R.date); } catch (e) {} $('mk-badge').classList.add('hidden'); }
+    var h = '<div class="mk-top"><h3>' + esc(R.title || (dot(R.date) + ' 주차장비 시장 동향')) + '</h3>' +
+      (R.greeting ? '<p style="margin:0 0 8px;color:#C5D3E0">' + esc(R.greeting) + '</p>' : '') +
+      '<b style="color:var(--signal)">오늘의 핵심 3줄</b><ol>' + (R.highlights || []).map(function (x) { return '<li>' + esc(x) + '</li>'; }).join('') + '</ol></div>';
+    (R.sections || []).forEach(function (s) {
+      var items = s.items || [];
+      h += '<div class="mk-sec"><h4>' + esc(s.name) + '</h4>' + (items.length ? items.map(function (it) {
+        var u = safeUrl(it.url);
+        return '<div class="mk-item"><b>' + (u ? '<a href="' + esc(u) + '" target="_blank" rel="noopener noreferrer">' + esc(it.title) + ' ↗</a>' : esc(it.title)) + '</b>' +
+          ((it.source || it.date) ? '<span class="mk-meta">' + esc([it.source, it.date ? dot(it.date) : ''].filter(Boolean).join(' · ')) + '</span>' : '') +
+          '<p>' + esc(it.summary) + '</p>' + (it.insight ? '<div class="mk-ins"><b style="display:inline">마하파킹 시사점</b> · ' + esc(it.insight) + '</div>' : '') + '</div>';
+      }).join('') : '<p class="hint" style="margin:0">특이 소식 없음</p>') + '</div>';
+    });
+    if (R.tip) h += '<div class="mk-sec mk-tip"><h4>💡 오늘의 영업 · 기술 팁</h4><p style="margin:0">' + esc(R.tip) + '</p></div>';
+    if ((R.sources || []).length) h += '<div class="mk-sec"><h4>출처</h4><ol class="mk-src">' + R.sources.map(function (s) { var u = safeUrl(s.url); return '<li>' + (u ? '<a href="' + esc(u) + '" target="_blank" rel="noopener noreferrer">' + esc(s.title || u) + '</a>' : esc(s.title)) + '</li>'; }).join('') + '</ol></div>';
+    $('mk-view').innerHTML = h;
+  }
+  $('mk-date').onchange = function () { MK.cur = this.value; drawMarket(); };
+  $('mk-reload').onclick = function () { MK.list = null; MK.cache = {}; MK.cur = null; $('mk-msg').textContent = ''; drawMarket(); };
+  mkLoadList();
 
   start();
 })();

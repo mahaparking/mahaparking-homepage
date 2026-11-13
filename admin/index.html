@@ -17,6 +17,22 @@
 .acc-row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
 .acc-list{list-style:none;margin:0;padding:0;display:grid;gap:8px}
 .acc-list li{display:flex;gap:10px;align-items:center;justify-content:space-between;border:1px solid var(--line);border-radius:10px;padding:10px 12px}
+.mk-top{background:var(--navy);color:#fff;border-radius:12px;padding:18px 20px;margin-bottom:18px}
+.mk-top h3{font-size:19px;margin-bottom:8px;color:#fff}
+.mk-top ol{margin:0;padding-left:20px;display:grid;gap:4px}
+.mk-sec{border:1px solid var(--line);border-radius:12px;padding:16px 18px;margin-bottom:14px;background:#fff}
+.mk-sec h4{font-family:var(--font-display);font-size:17px;margin:0 0 10px;color:var(--brand-deep)}
+.mk-item{padding:10px 0;border-top:1px dashed var(--line)}
+.mk-item:first-of-type{border-top:0;padding-top:0}
+.mk-item b{display:block;font-size:15.5px}
+.mk-item a{color:var(--brand);text-decoration:none}
+.mk-item a:hover{text-decoration:underline}
+.mk-item p{margin:4px 0;font-size:14.5px}
+.mk-ins{font-size:14px;background:#FFF6DD;border-left:4px solid var(--signal);padding:6px 10px;border-radius:6px;margin-top:6px}
+.mk-meta{font-size:12.5px;color:var(--muted)}
+.mk-tip{border:2px solid var(--signal);background:#FFFBEF}
+.mk-src{font-size:13px;color:var(--muted);margin:0;padding-left:18px}
+.mk-src a{color:var(--muted)}
 .req-photos img{width:52px;height:52px;object-fit:cover;border-radius:6px;cursor:zoom-in}
 </style>
 </head>
@@ -48,6 +64,19 @@
       <button role="tab" data-tab="caseup">시공사례 올리기</button>
       <button role="tab" data-tab="prices">견적 항목 관리</button>
       <button role="tab" data-tab="stats">방문 통계</button>
+      <button role="tab" data-tab="market">시장 동향 <span class="badge hidden" id="mk-badge">N</span></button>
+    </div>
+
+    <!-- 시장 동향 -->
+    <div class="card panel hidden" data-panel="market">
+      <h2>시장 동향 보고</h2>
+      <div class="add-row" style="margin-top:0;align-items:center">
+        <label class="f" for="mk-date" style="display:flex;gap:8px;align-items:center">날짜<select id="mk-date" style="width:auto;min-width:220px"></select></label>
+        <button class="btn btn-line btn-sm" type="button" id="mk-reload">↻ 새로고침</button>
+        <span class="hint" id="mk-msg" role="status"></span>
+      </div>
+      <p class="hint">Claude 비서가 매일 아침 06:47에 주차장 운영 뉴스 · 새 장비 · 업체 동향 · 정책 · 입찰 공고를 조사해 정리한 보고서입니다. 항목 제목을 누르면 원문 기사가 새 창으로 열립니다.</p>
+      <div id="mk-view"></div>
     </div>
 
     <!-- 견적 요청함 -->
