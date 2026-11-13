@@ -16,6 +16,14 @@
 3. Vercel Settings → Domains 에 `mahaparking.co.kr`, `www.mahaparking.co.kr` 추가 → 가비아 DNS에 안내된 값 입력.
 4. Supabase → Authentication → URL Configuration 의 Site URL 을 `https://mahaparking.co.kr` 로 변경.
 
+## 현장샷 (관리자 → "현장샷" 탭)
+- 현장 사진(작업 전·중·후) + 메모 → AI가 쇼츠 자막·블로그 글 작성 → 휴대폰 안에서 쇼츠 영상 생성
+- `api/hyunjangshot.js` : AI 글쓰기 서버 함수. 관리자 로그인한 사람만 사용 가능
+- `assets/shot/` : 현장샷 화면(hyunjangshot.js), 영상 엔진(shorts-engine.js), 배경음악 2곡(직접 만든 곡, 저작권 없음), 엔딩 카드
+- **Vercel 설정 필요**: Settings → Environment Variables 에 `ANTHROPIC_API_KEY` (Claude API 키) 추가 후 Redeploy
+- 선택: `HYUNJANGSHOT_MODEL` (기본 claude-sonnet-5-5)
+- 1차 버전은 음성(내레이션) 없음, 만든 결과는 저장되지 않음(영상 저장·글 복사 후 새로 시작)
+
 ## 다음 단계 (예정)
 - 견적서 이메일 자동 발송 (하이웍스 메일 + 발송 서비스 연결)
 - 지금은 견적서를 "PDF 저장 · 인쇄"로 저장한 뒤 "고객에게 메일 쓰기"로 직접 보냅니다.
