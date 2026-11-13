@@ -22,7 +22,9 @@
 - `assets/shot/` : 현장샷 화면(hyunjangshot.js), 영상 엔진(shorts-engine.js), 배경음악 2곡(직접 만든 곡, 저작권 없음), 엔딩 카드
 - **Vercel 설정 필요**: Settings → Environment Variables 에 `ANTHROPIC_API_KEY` (Claude API 키) 추가 후 Redeploy
 - 선택: `HYUNJANGSHOT_MODEL` (기본 claude-sonnet-5-5)
-- 1차 버전은 음성(내레이션) 없음, 만든 결과는 저장되지 않음(영상 저장·글 복사 후 새로 시작)
+- 내레이션 음성: `api/hyunjangshot-tts.js` (구글 Text-to-Speech, Chirp 3 HD 한국어 남성 목소리 6종, 매달 100만 글자 무료)
+  - **Vercel 설정 필요**: `GOOGLE_TTS_API_KEY` (구글 클라우드 API 키, Text-to-Speech API만 쓰도록 제한 권장)
+- 만든 결과는 저장되지 않음(영상 저장·글 복사 후 새로 시작)
 
 ## 다음 단계 (예정)
 - 견적서 이메일 자동 발송 (하이웍스 메일 + 발송 서비스 연결)

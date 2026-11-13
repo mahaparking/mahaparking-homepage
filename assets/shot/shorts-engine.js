@@ -15,10 +15,12 @@
  *     focus: { x: 0.45, y: 0.5 } | null,  // 사진 안 포인트(0~1). 없으면 가운데
  *     zoom: 'low' | 'mid' | 'high',        // 포인트로 확대되는 정도
  *     mark: 'none' | 'circle' | 'arrow',   // 포인트 강조 표시
- *     duration: 초(선택, 없으면 자막 길이로 자동)
+ *     duration: 초(선택, 없으면 자막 길이로 자동 · 내레이션이 있으면 그 길이에 맞춤)
+ *     voice: 내레이션 오디오 Blob/URL (선택)
  *   }]
  *   endCard: 이미지 URL/Blob (1080×1920 엔딩 카드), endDuration: 3
- *   music: 오디오 URL/Blob (선택), musicVolume: 0.5
+ *   endVoice: 엔딩 화면 내레이션 Blob/URL (선택)
+ *   music: 오디오 URL/Blob (선택), musicVolume: 0.5 (내레이션이 나올 때는 자동으로 작아짐)
  *   style: { font: 'Black Han Sans', subtitleSize: 'big', subtitlePos: 'center',
  *            subtitleColor: 'white'|'yellow'|'band', headlineSize: 'big',
  *            headlineBg: 'blue'|'white'|'none', brand: '#0662AB' }
@@ -262,44 +264,83 @@ export async function renderShorts(project) {
   const onProgress = project.onProgress || (() => {});
   await document.fonts.load(`100px "${style.font}"`);
 
-  const scenes = project.scenes.map((s) => ({ ...s, duration: s.duration || autoDuration(s.subtitle) }));
+  // 아이폰은 버튼을 누른 순간에 만든 AudioContext 만 소리를 냅니다 → 화면에서 만들어 넘겨받습니다
+  const AC = window.AudioContext || window.webkitAudioContext;
+  const actx = project.audioContext || new AC();
+  const dest = actx.createMediaStreamDestination();
+
+  // 내레이션(장면별 voice, 엔딩 endVoice)을 먼저 풀어서 장면 길이를 정한다
+  const voiceBufs = await Promise.all(project.scenes.map((s) => (s.voice ? loadAudio(actx, s.voice).catch(() => null) : null)));
+  const endVoiceBuf = project.endVoice ? await loadAudio(actx, project.endVoice).catch(() => null) : null;
+  const VOICE_LEAD = 0.25; // 장면 시작 후 말 시작까지
+  const scenes = project.scenes.map((s, i) => {
+    const vb = voiceBufs[i];
+    const base = s.duration || autoDuration(s.subtitle);
+    return { ...s, duration: vb ? Math.max(base, vb.duration + VOICE_LEAD + 0.45) : base };
+  });
   const images = await Promise.all(scenes.map((s) => loadImage(s.image)));
   const endImg = project.endCard ? await loadImage(project.endCard) : null;
-  const endDur = endImg ? project.endDuration || 3 : 0;
+  let endDur = endImg ? project.endDuration || 3 : 0;
+  if (endImg && endVoiceBuf) endDur = Math.max(endDur, endVoiceBuf.duration + VOICE_LEAD + 0.6);
 
   // 타임라인
   let acc = 0;
-  const timeline = scenes.map((s, i) => { const item = { s, img: images[i], start: acc }; acc += s.duration; return item; });
+  const timeline = scenes.map((s, i) => { const item = { s, img: images[i], start: acc, voice: voiceBufs[i] }; acc += s.duration; return item; });
   const total = acc + endDur;
+  const voiceSpans = timeline.filter((it) => it.voice).map((it) => [it.start + VOICE_LEAD, it.start + VOICE_LEAD + it.voice.duration]);
+  if (endImg && endVoiceBuf) voiceSpans.push([acc + VOICE_LEAD, acc + VOICE_LEAD + endVoiceBuf.duration]);
 
   const canvas = document.createElement('canvas');
   canvas.width = W;
   canvas.height = H;
   const g = canvas.getContext('2d');
 
-  // 오디오: 배경음악을 녹화 스트림에 섞는다
-  // 아이폰은 버튼을 누른 순간에 만든 AudioContext 만 소리를 냅니다 → 화면에서 만들어 넘겨받습니다
-  const AC = window.AudioContext || window.webkitAudioContext;
-  const actx = project.audioContext || new AC();
-  const dest = actx.createMediaStreamDestination();
+  // 오디오: 배경음악 + 내레이션을 녹화 스트림에 섞는다
   let musicNode = null;
+  let musicGain = null;
+  const vol = project.musicVolume ?? 0.5;
+  const duck = voiceSpans.length ? vol * 0.3 : vol; // 말할 때는 음악을 작게
   if (project.music) {
     const buf = await loadAudio(actx, project.music);
     musicNode = actx.createBufferSource();
     musicNode.buffer = buf;
     musicNode.loop = true;
-    const gain = actx.createGain();
-    const vol = project.musicVolume ?? 0.5;
-    gain.gain.setValueAtTime(vol, actx.currentTime);
-    gain.gain.setValueAtTime(vol, actx.currentTime + Math.max(0, total - 1.5));
-    gain.gain.linearRampToValueAtTime(0.0001, actx.currentTime + total);
-    musicNode.connect(gain).connect(dest);
+    musicGain = actx.createGain();
+    musicGain.gain.value = vol;
+    musicNode.connect(musicGain).connect(dest);
   } else {
     // 무음 트랙(일부 플랫폼은 오디오 트랙이 없으면 업로드를 거부)
     const osc = actx.createConstantSource ? actx.createConstantSource() : actx.createOscillator();
     const z = actx.createGain(); z.gain.value = 0;
     osc.connect(z).connect(dest); osc.start();
   }
+  const voiceGain = actx.createGain();
+  voiceGain.gain.value = 1.0;
+  voiceGain.connect(dest);
+
+  /** 녹화 시작 시각 t0(오디오 시계)에 맞춰 음악 볼륨 조절과 내레이션을 예약 */
+  const scheduleAudio = (t0) => {
+    if (musicGain) {
+      const gp = musicGain.gain;
+      gp.setValueAtTime(vol, t0);
+      for (const [a, b] of voiceSpans) {
+        gp.setValueAtTime(vol, t0 + Math.max(0, a - 0.25));
+        gp.linearRampToValueAtTime(duck, t0 + a);
+        gp.setValueAtTime(duck, t0 + b);
+        gp.linearRampToValueAtTime(vol, t0 + b + 0.35);
+      }
+      gp.setValueAtTime(voiceSpans.some(([, b]) => b > total - 1.5) ? duck : vol, t0 + Math.max(0, total - 1.5));
+      gp.linearRampToValueAtTime(0.0001, t0 + total);
+      musicNode.start(t0);
+    }
+    timeline.forEach((it) => {
+      if (!it.voice) return;
+      const src = actx.createBufferSource(); src.buffer = it.voice; src.connect(voiceGain); src.start(t0 + it.start + VOICE_LEAD);
+    });
+    if (endImg && endVoiceBuf) {
+      const src = actx.createBufferSource(); src.buffer = endVoiceBuf; src.connect(voiceGain); src.start(t0 + acc + VOICE_LEAD);
+    }
+  };
 
   const stream = canvas.captureStream(FPS);
   dest.stream.getAudioTracks().forEach((t) => stream.addTrack(t));
@@ -330,12 +371,12 @@ export async function renderShorts(project) {
   drawAt(0);
   await actx.resume();
   rec.start(500);
-  if (musicNode) musicNode.start();
-  const t0 = performance.now();
+  scheduleAudio(actx.currentTime + 0.05);
+  const t0 = performance.now() + 50;
 
   await new Promise((resolve) => {
     const tick = () => {
-      const time = (performance.now() - t0) / 1000;
+      const time = Math.max(0, (performance.now() - t0) / 1000);
       if (time >= total) { resolve(); return; }
       drawAt(time);
       onProgress(time / total);
@@ -348,7 +389,7 @@ export async function renderShorts(project) {
   await new Promise((r) => setTimeout(r, 300));
   rec.stop();
   await stopped;
-  if (musicNode) musicNode.stop();
+  if (musicNode) { try { musicNode.stop(); } catch (e) { /* 이미 멈춤 */ } }
   actx.close();
   onProgress(1);
   return { blob: new Blob(chunks, { type: mimeType || 'video/webm' }), mimeType, duration: total };

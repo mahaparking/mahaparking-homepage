@@ -7,8 +7,7 @@
  * - 사진과 작업 메모를 받아 쇼츠 자막과 블로그 글 재료를 JSON 으로 돌려줍니다.
  */
 
-const SB_URL = process.env.SUPABASE_URL || 'https://bidlnzkaimceyblyvaut.supabase.co';
-const SB_KEY = process.env.SUPABASE_PUBLISHABLE_KEY || 'sb_publishable_RyfBwW7u_t4fgEnDRIWT7w_L8v4B4Zy';
+const { readBody, send, guard } = require('./_auth');
 const MODEL = process.env.HYUNJANGSHOT_MODEL || 'claude-sonnet-5-5';
 const MAX_PHOTOS = 12;
 
@@ -29,6 +28,8 @@ const SYSTEM = `당신은 주차장비 유지보수·업싸이클링 업체 "마
 - scenes: 사진 한 장당 자막 하나, 사진 순서 그대로. 자막은 두 줄(줄바꿈 \\n 한 번), 한 줄은 띄어쓰기 포함 11자 이내.
   각 자막에서 가장 중요한 말 하나를 *별표*로 감쌉니다 (예: "배달 오토바이에 걸려\\n차단바가 *파손*됐습니다").
   흐름: 문제 → 확인·점검 → 작업 → 결과. 마지막 장면은 마무리 느낌으로. 말투는 짧고 힘 있게.
+  narration: 그 장면에서 남성 성우가 읽을 내레이션 한 문장. 자막과 같은 뜻을 자연스러운 말로, 띄어쓰기 포함 14~30자, 존댓말("~습니다", "~했죠").
+  내레이션에는 별표·괄호·기호를 쓰지 않고, 숫자·영문 약어는 읽는 소리대로 한글로 씁니다 (LED → 엘이디, 3m → 삼 미터).
 
 [블로그] 마하파킹 블로그 고정 구성의 재료만 씁니다. (회사 소개·약속·문의 안내는 프로그램이 자동으로 붙이므로 쓰지 않습니다)
 - title: 고객 상황을 묻는 의문문 제목 (예: "배달 중 오토바이에 주차차단바가 부러졌다면, 어떻게 해야 할까요?")
@@ -57,7 +58,7 @@ const TOOL = {
           headline_big: { type: 'string' },
           scenes: {
             type: 'array',
-            items: { type: 'object', required: ['photo', 'subtitle'], properties: { photo: { type: 'integer' }, subtitle: { type: 'string' } } },
+            items: { type: 'object', required: ['photo', 'subtitle', 'narration'], properties: { photo: { type: 'integer' }, subtitle: { type: 'string' }, narration: { type: 'string' } } },
           },
         },
       },
@@ -91,43 +92,9 @@ const TOOL = {
   },
 };
 
-async function isAdmin(token) {
-  if (!token) return false;
-  const headers = { apikey: SB_KEY, Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' };
-  const u = await fetch(`${SB_URL}/auth/v1/user`, { headers });
-  if (!u.ok) return false;
-  const r = await fetch(`${SB_URL}/rest/v1/rpc/is_admin`, { method: 'POST', headers, body: '{}' });
-  if (!r.ok) return false;
-  return (await r.json()) === true;
-}
-
-function readBody(req) {
-  if (req.body && typeof req.body === 'object') return Promise.resolve(req.body);
-  return new Promise((resolve, reject) => {
-    let s = '';
-    req.on('data', (c) => { s += c; });
-    req.on('end', () => { try { resolve(JSON.parse(s || '{}')); } catch (e) { reject(e); } });
-    req.on('error', reject);
-  });
-}
-
-function send(res, code, obj) {
-  res.statusCode = code;
-  res.setHeader('Content-Type', 'application/json; charset=utf-8');
-  res.setHeader('Cache-Control', 'no-store');
-  res.end(JSON.stringify(obj));
-}
-
 module.exports = async (req, res) => {
-  if (req.method !== 'POST') return send(res, 405, { error: 'POST 만 됩니다.' });
   if (!process.env.ANTHROPIC_API_KEY) return send(res, 500, { error: 'Vercel 환경변수 ANTHROPIC_API_KEY 가 아직 없습니다.' });
-
-  const token = (req.headers.authorization || '').replace(/^Bearer\s+/i, '');
-  try {
-    if (!(await isAdmin(token))) return send(res, 401, { error: '관리자 로그인이 필요합니다.' });
-  } catch (e) {
-    return send(res, 502, { error: '로그인 확인에 실패했습니다.' });
-  }
+  if (!(await guard(req, res))) return;
 
   let body;
   try { body = await readBody(req); } catch (e) { return send(res, 400, { error: '요청 형식이 잘못됐습니다.' }); }

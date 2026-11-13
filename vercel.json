@@ -24,6 +24,11 @@
     }
   ],
   "functions": {
-    "api/hyunjangshot.js": { "maxDuration": 60 }
+    "api/hyunjangshot.js": {
+      "maxDuration": 60
+    },
+    "api/hyunjangshot-tts.js": {
+      "maxDuration": 30
+    }
   }
 }
