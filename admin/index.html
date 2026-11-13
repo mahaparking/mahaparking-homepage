@@ -47,6 +47,7 @@
       <button role="tab" data-tab="quote">견적서 작성</button>
       <button role="tab" data-tab="caseup">시공사례 올리기</button>
       <button role="tab" data-tab="prices">견적 항목 관리</button>
+      <button role="tab" data-tab="stats">방문 통계</button>
     </div>
 
     <!-- 견적 요청함 -->
@@ -129,6 +130,25 @@
       </form>
       <h3 style="font-size:17px;margin:30px 0 10px">올린 시공사례</h3>
       <div class="tbl-wrap"><table><thead><tr><th>작업일</th><th>제목</th><th>지역</th><th>종류</th><th>사진</th><th>홈페이지 공개</th><th></th></tr></thead><tbody id="case-body"></tbody></table></div>
+    </div>
+
+    <!-- 방문 통계 -->
+    <div class="card panel hidden" data-panel="stats">
+      <h2>방문 통계</h2>
+      <div class="add-row" style="margin-top:0;align-items:center">
+        <label class="f" for="st-days" style="display:flex;gap:8px;align-items:center">기간<select id="st-days" style="width:auto"><option value="7">최근 7일</option><option value="30" selected>최근 30일</option><option value="90">최근 90일</option></select></label>
+        <button class="btn btn-line btn-sm" type="button" id="st-reload">↻ 새로고침</button>
+        <span class="hint" id="st-msg" role="status"></span>
+      </div>
+      <p class="hint">홈페이지에 들어온 사람 수입니다. 같은 사람이 하루에 여러 번 들어와도 1명으로 셉니다. 이름·IP 같은 개인 정보는 남기지 않습니다. 이 관리자 화면을 한 번이라도 연 기기(PC·폰)는 통계에서 빠집니다.</p>
+      <div class="st-kpis" id="st-kpis"></div>
+      <div class="st-box"><div class="st-h"><b>날짜별 방문자</b><span class="hint">막대에 마우스를 올리면 숫자가 나옵니다</span></div><div class="st-chart" id="st-chart"></div></div>
+      <div class="st-grid">
+        <div class="st-box"><div class="st-h"><b>어디서 왔나요</b><span class="hint">방문자 기준</span></div><div id="st-ch"></div></div>
+        <div class="st-box"><div class="st-h"><b>무엇으로 봤나요</b><span class="hint">방문자 기준</span></div><div id="st-dev"></div></div>
+        <div class="st-box"><div class="st-h"><b>많이 본 화면</b><span class="hint">조회 수</span></div><div id="st-pg"></div></div>
+        <div class="st-box"><div class="st-h"><b>들어온 사이트 주소</b><span class="hint">상위 10개</span></div><div id="st-ref"></div></div>
+      </div>
     </div>
 
     <!-- 견적 항목 관리 -->

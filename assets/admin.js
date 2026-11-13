@@ -5,6 +5,7 @@
   var CASE_TYPES = ['차단바 교체', '차단기 수리', '차단기 설치', '루프센서 시공', '센서 시공', '경광등 수리', '번호인식(LPR)', '자동출차 전환', '리모컨 · 출입', '기타'];
   var D = { cats: [], products: [], requests: [], quotes: [], cases: [], accounts: [] };
   var tab = 'requests';
+  try { localStorage.setItem('maha_admin', '1'); } catch (e) {}   // 이 기기는 방문 통계에서 빼기
 
   function fail(msg, err) { if (err) console.error(err); modal('<h3>저장하지 못했습니다</h3><p>' + esc(msg) + '</p><p class="hint">' + esc(err && err.message || '') + '</p><button class="btn btn-primary" data-close>확인</button>'); }
   function showOnly(id) { ['view-login', 'view-loading', 'view-admin'].forEach(function (v) { $(v).classList.toggle('hidden', v !== id); }); }
@@ -58,8 +59,62 @@
     if (tab === 'quote') drawQuote();
     if (tab === 'caseup') drawCaseAdmin();
     if (tab === 'prices') drawPrices();
+    if (tab === 'stats') drawStats();
   }
   [].forEach.call(document.querySelectorAll('#admin-tabs button'), function (b) { b.onclick = function () { tab = b.dataset.tab; render(); }; });
+
+  /* ---------- 방문 통계 ---------- */
+  var PAGE_NAME = { home: '홈', products: '제품 견적', cases: '시공사례' };
+  var DEV_NAME = { mobile: '휴대폰', pc: 'PC', tablet: '태블릿' };
+  var num = function (n) { return (n || 0).toLocaleString('ko-KR'); };
+  $('st-days').onchange = function () { drawStats(); };
+  $('st-reload').onclick = function () { drawStats(); };
+  function bars(list, names) {
+    if (!list || !list.length) return '<p class="hint">아직 기록이 없습니다.</p>';
+    var max = Math.max.apply(null, list.map(function (x) { return x.n; })) || 1;
+    var tot = list.reduce(function (a, x) { return a + x.n; }, 0) || 1;
+    return '<div class="st-bars">' + list.map(function (x) {
+      return '<div class="st-row"><span class="st-k">' + esc((names && names[x.k]) || x.k || '(없음)') + '</span><span class="st-track"><i style="width:' + Math.max(2, x.n / max * 100) + '%"></i></span><span class="st-n">' + num(x.n) + '<small>' + Math.round(x.n / tot * 100) + '%</small></span></div>';
+    }).join('') + '</div>';
+  }
+  function drawStats() {
+    var days = +$('st-days').value;
+    $('st-msg').textContent = '불러오고 있습니다...';
+    sb.rpc('visit_stats', { p_days: days }).then(function (r) {
+      if (r.error) { $('st-msg').textContent = '통계를 불러오지 못했습니다. (' + r.error.message + ')'; return; }
+      $('st-msg').textContent = '';
+      var S = r.data, rate = S.u ? (S.req / S.u * 100) : 0;
+      var kind = Object.keys(S.req_kind || {}).map(function (k) { return k + ' ' + S.req_kind[k]; }).join(' · ');
+      $('st-kpis').innerHTML = [
+        ['오늘 방문자', num(S.today_u) + '명', '오늘 조회 ' + num(S.today_pv) + '회'],
+        ['기간 방문자', num(S.u) + '명', '최근 ' + S.days + '일'],
+        ['기간 조회 수', num(S.pv) + '회', '방문 ' + num(S.s) + '번'],
+        ['상담 · 견적 신청', num(S.req) + '건', kind || '신청 없음'],
+        ['신청 비율', rate.toFixed(1) + '%', '방문자 100명 중 ' + rate.toFixed(1) + '명']
+      ].map(function (k) { return '<div class="st-kpi"><span>' + k[0] + '</span><b>' + k[1] + '</b><small>' + esc(k[2]) + '</small></div>'; }).join('');
+      var daily = S.daily || [], max = Math.max.apply(null, daily.map(function (x) { return x.u; }).concat([1]));
+      var step = daily.length > 31 ? 7 : daily.length > 10 ? 3 : 1;
+      $('st-chart').innerHTML = '<div class="st-cols' + (daily.length > 31 ? ' dense' : '') + '" style="--n:' + daily.length + '">' + daily.map(function (x, i) {
+        var md = x.d.slice(5).replace('-', '/'), tip = x.d.replace(/-/g, '.') + '  방문자 ' + x.u + '명 · 조회 ' + x.pv + '회' + (x.req ? ' · 신청 ' + x.req + '건' : '');
+        return '<div class="st-col" tabindex="0" data-tip="' + esc(tip) + '"><div class="st-bar-wrap">' + (x.u ? '<em>' + x.u + '</em>' : '') + '<i style="height:' + (x.u / max * 100) + '%"></i>' + (x.req ? '<b class="st-req">●</b>' : '') + '</div><span>' + ((daily.length - 1 - i) % step === 0 ? md : '') + '</span></div>';
+      }).join('') + '</div><div class="st-tip hidden" id="st-tip"></div><p class="hint" style="margin:10px 0 0"><b class="st-req">●</b> 상담·견적 신청이 들어온 날</p>';
+      $('st-ch').innerHTML = bars(S.channels);
+      $('st-dev').innerHTML = bars(S.devices, DEV_NAME);
+      $('st-pg').innerHTML = bars(S.pages, PAGE_NAME);
+      $('st-ref').innerHTML = bars(S.refs);
+    });
+  }
+  // 막대 위 숫자 풍선
+  document.addEventListener('mouseover', tipOn); document.addEventListener('focusin', tipOn);
+  function tipOn(e) {
+    var tip = $('st-tip'); if (!tip) return;
+    var c = e.target.closest && e.target.closest('.st-col');
+    if (!c) { tip.classList.add('hidden'); return; }
+    var box = $('st-chart').getBoundingClientRect(), r = c.getBoundingClientRect();
+    tip.textContent = c.dataset.tip; tip.classList.remove('hidden');
+    var x = r.left - box.left + r.width / 2, w = tip.offsetWidth;
+    tip.style.left = Math.min(Math.max(0, x - w / 2), box.width - w) + 'px';
+  }
 
   /* ---------- 견적 요청함 ---------- */
   var ST = { new: ['새 요청', 'st-new'], quote: ['견적 작성 중', 'st-quote'], sent: ['견적 발송', 'st-sent'] };

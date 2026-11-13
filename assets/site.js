@@ -11,13 +11,36 @@
     ['cam', '번호인식(LPR) 업싸이클링', '기존 차단기는 살리고 번호인식만 추가하거나, 구형 LPR을 신형으로 바꿉니다.'],
     ['remote', '리모컨 · 출입 · 네트워크', '리모컨 수신 불량, RF 카드·리더기, 관제 PC 복구와 경비실 네트워크 신설까지 맡습니다.']
   ];
-  var SYMPTOMS = ['업싸이클링 상담', '차단바 파손', '바가 안 올라감', '안 내려감 · 차량 타격', '저절로 열림', '경광등 이상', '번호인식 불량', '리모컨 · 카드 불량'];
+  var SYMPTOMS = ['업싸이클링 상담', '차단바 파손', '차단바 안 올라감', '차단바 안 내려감', '저절로 열림', '경광등 이상', '번호인식 불량', '리모컨 · 카드 불량'];
   var FAIL = '접수 중 문제가 생겼습니다. 잠시 후 다시 시도하시거나 ' + MAHA.PHONE + '으로 전화 주세요.';
+
+  /* ---------- 방문 기록 (통계용 · 개인 정보 없음) ---------- */
+  var lastTracked = '';
+  function track(page) {
+    if (page === lastTracked) return; lastTracked = page;
+    try {
+      if (!/mahaparking\.co\.kr$/.test(location.hostname)) return;          // 실제 홈페이지에서만
+      if (localStorage.getItem('maha_admin') === '1') return;                 // 관리자 기기는 빼기
+      if (navigator.webdriver || /bot|crawl|spider|slurp|yeti|daumoa|bingpreview|facebookexternalhit|kakaotalk-scrap/i.test(navigator.userAgent)) return;
+      var rnd = function () { return Date.now().toString(36) + Math.random().toString(36).slice(2, 10); };
+      var vid = localStorage.getItem('maha_vid'); if (!vid) { vid = rnd(); localStorage.setItem('maha_vid', vid); }
+      var sid = sessionStorage.getItem('maha_sid'), ref = sessionStorage.getItem('maha_ref'), src = sessionStorage.getItem('maha_src');
+      if (!sid) {
+        sid = rnd(); sessionStorage.setItem('maha_sid', sid);
+        ref = ''; try { var h = new URL(document.referrer).hostname; if (h && !/mahaparking\.co\.kr$/.test(h)) ref = h; } catch (e) {}
+        src = (new URLSearchParams(location.search).get('utm_source') || '').slice(0, 60);
+        sessionStorage.setItem('maha_ref', ref); sessionStorage.setItem('maha_src', src);
+      }
+      var ua = navigator.userAgent, device = /iPad|Tablet/i.test(ua) ? 'tablet' : /Mobi|Android|iPhone/i.test(ua) ? 'mobile' : 'pc';
+      sb.from('visits').insert({ vid: vid, sid: sid, page: page, ref: (ref || '').slice(0, 200), src: src || '', device: device }).then(function () {}, function () {});
+    } catch (e) {}
+  }
 
   /* ---------- 화면 전환 ---------- */
   var VIEWS = ['home', 'products', 'cases'];
   function show(view, anchor) {
     if (VIEWS.indexOf(view) < 0) view = 'home';
+    track(view);
     VIEWS.forEach(function (v) { $('view-' + v).classList.toggle('hidden', v !== view); });
     [].forEach.call(document.querySelectorAll('#menu button'), function (b) {
       if (b.dataset.go === view && !b.dataset.anchor) b.setAttribute('aria-current', 'page'); else b.removeAttribute('aria-current');
