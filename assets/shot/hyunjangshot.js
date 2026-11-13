@@ -14,6 +14,8 @@ const STAGES = [
 const SITE_TYPES = ['아파트', '빌라', '상가', '오피스텔', '공영주차장', '물류센터', '공장', '학교', '기타'];
 const WORK_TYPES = ['차단바 교체', '차단기 설치', '차단기 수리', '경광등 수리', '루프센서 시공', '차량검지기 교체', '번호인식 업그레이드', '기타'];
 const MAX_PER_STAGE = 4;
+const VOICES = [['Charon', '남성 1'], ['Fenrir', '남성 2'], ['Orus', '남성 3'], ['Puck', '남성 4'], ['Algenib', '남성 5'], ['Iapetus', '남성 6']];
+const END_NARRATION = '주차설비 사고, 고장 수리는 마하파킹. 공일공, 팔이칠오, 일공삼육으로 연락 주세요.';
 
 /* 블로그 고정 문단 (기존 마하파킹 블로그 글 그대로) */
 const FIXED = {
@@ -31,6 +33,8 @@ const S = {
   headline: { small: '', big: '' },
   style: { font: 'Black Han Sans', subtitleSize: 'big', subtitlePos: 'center', subtitleColor: 'white', headlineSize: 'big', headlineBg: 'blue' },
   music: 'bright',
+  voice: 'Charon', // 'none' 이면 음성 없음
+  endNarration: END_NARRATION,
   ending: 'blue',
   previewIdx: 0,
   busy: false,
@@ -181,7 +185,7 @@ async function runAI() {
     S.headline = { small: sh.headline_small || '', big: sh.headline_big || '' };
     S.scenes = photos.map((p, i) => {
       const found = (sh.scenes || []).find((x) => x.photo === i + 1) || (sh.scenes || [])[i] || {};
-      return { photo: i, subtitle: (found.subtitle || '').replace(/\\n/g, '\n') };
+      return { photo: i, subtitle: (found.subtitle || '').replace(/\\n/g, '\n'), narration: found.narration || (found.subtitle || '').replace(/\*|\\n|\n/g, ' ').replace(/\s+/g, ' ').trim() };
     });
     S.previewIdx = 0;
     msg.textContent = '';
@@ -221,10 +225,15 @@ function drawScenes() {
     const p = photos[sc.photo];
     return `<div class="shot-scene${i === S.previewIdx ? ' on' : ''}">
       <button type="button" class="shot-scene-img" data-pv="${i}" aria-label="${i + 1}번 장면 미리보기"><img src="${p ? p.url : ''}" alt=""></button>
-      <label class="f" style="flex:1"><span class="hint">${i + 1}번 장면 자막 · 줄바꿈으로 두 줄, *단어* 는 노란 강조</span><textarea data-sub="${i}" rows="2">${esc(sc.subtitle)}</textarea></label>
+      <div style="flex:1;display:grid;gap:6px;min-width:0">
+        <label class="f"><span class="hint">${i + 1}번 장면 자막 · 줄바꿈으로 두 줄, *단어* 는 노란 강조</span><textarea data-sub="${i}" rows="2">${esc(sc.subtitle)}</textarea></label>
+        <label class="f shot-nar"><span class="hint">내레이션 (성우가 읽는 문장)</span><textarea data-nar="${i}" rows="2" style="min-height:56px">${esc(sc.narration || '')}</textarea></label>
+      </div>
     </div>`;
   }).join('');
   box.querySelectorAll('[data-sub]').forEach((t) => { t.oninput = () => { S.scenes[+t.dataset.sub].subtitle = t.value; if (+t.dataset.sub === S.previewIdx) preview(); }; t.onfocus = () => { if (S.previewIdx !== +t.dataset.sub) { S.previewIdx = +t.dataset.sub; markOn(); preview(); } }; });
+  box.querySelectorAll('[data-nar]').forEach((t) => { t.oninput = () => { S.scenes[+t.dataset.nar].narration = t.value; }; });
+  root.querySelectorAll('.shot-nar').forEach((el) => el.classList.toggle('hidden', S.voice === 'none'));
   box.querySelectorAll('[data-pv]').forEach((b) => { b.onclick = () => { S.previewIdx = +b.dataset.pv; markOn(); preview(); }; });
   preview();
 }
@@ -260,6 +269,11 @@ function drawStyle() {
   q('#st-hbg').innerHTML = opt([['blue', '파란 띠'], ['white', '흰 띠'], ['none', '띠 없음']], S.style.headlineBg);
   q('#st-music').innerHTML = opt([['bright', '경쾌하게'], ['calm', '차분하게'], ['none', '음악 없음']], S.music);
   q('#st-end').innerHTML = opt([['blue', '파란 배경'], ['white', '흰 배경'], ['none', '엔딩 없음']], S.ending);
+  q('#st-voice').innerHTML = opt([['none', '음성 없음 (자막만)']].concat(VOICES), S.voice);
+  q('#st-endnar').value = S.endNarration;
+  q('#st-endnar').oninput = (e) => { S.endNarration = e.target.value; };
+  q('#st-voice').onchange = (e) => { S.voice = e.target.value; root.querySelectorAll('.shot-nar').forEach((el) => el.classList.toggle('hidden', S.voice === 'none')); };
+  q('#st-listen').onclick = listenVoice;
   const bind = (id, fn) => { q(id).onchange = (e) => { fn(e.target.value); preview(); }; };
   bind('#st-font', (v) => { S.style.font = v; });
   bind('#st-size', (v) => { S.style.subtitleSize = v; });
@@ -271,6 +285,40 @@ function drawStyle() {
   bind('#st-end', (v) => { S.ending = v; });
   q('#sh-small').oninput = (e) => { S.headline.small = e.target.value; preview(); };
   q('#sh-big').oninput = (e) => { S.headline.big = e.target.value; preview(); };
+}
+
+/* ---------- 내레이션 음성 (구글 Chirp 3 HD, /api/hyunjangshot-tts) ---------- */
+const ttsCache = new Map(); // "목소리|문장" → mp3 Blob
+const b64ToBlob = (b64) => { const bin = atob(b64); const u = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i); return new Blob([u], { type: 'audio/mpeg' }); };
+
+async function tts(lines, voice) {
+  const need = [...new Set(lines.filter((s) => s && !ttsCache.has(`${voice}|${s}`)))];
+  if (need.length) {
+    const { data } = await sb.auth.getSession();
+    const token = data.session && data.session.access_token;
+    const r = await fetch('/api/hyunjangshot-tts', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: JSON.stringify({ lines: need, voice }) });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(j.error || `음성 오류 ${r.status}`);
+    need.forEach((s, i) => { if (j.clips[i]) ttsCache.set(`${voice}|${s}`, b64ToBlob(j.clips[i])); });
+  }
+  return lines.map((s) => (s ? ttsCache.get(`${voice}|${s}`) || null : null));
+}
+
+async function listenVoice() {
+  const btn = root.querySelector('#st-listen');
+  const au = root.querySelector('#st-audio');
+  if (S.voice === 'none') { modal('<h3>목소리를 먼저 골라 주세요</h3><p>"내레이션 목소리"에서 남성 1~6 중 하나를 고르면 들어볼 수 있습니다.</p><button class="btn btn-primary" data-close>확인</button>'); return; }
+  const line = (S.scenes[S.previewIdx] && S.scenes[S.previewIdx].narration) || '안녕하세요, 주차장비 유지보수 전문 마하파킹입니다.';
+  btn.disabled = true; btn.textContent = '불러오는 중...';
+  try {
+    const [blob] = await tts([line], S.voice);
+    au.src = URL.createObjectURL(blob);
+    await au.play();
+  } catch (e) {
+    modal(`<h3>목소리를 불러오지 못했습니다</h3><p>${esc(e.message)}</p><button class="btn btn-primary" data-close>확인</button>`);
+  } finally {
+    btn.disabled = false; btn.textContent = '▶ 목소리 들어보기';
+  }
 }
 
 async function makeVideo() {
@@ -286,9 +334,21 @@ async function makeVideo() {
   bar.classList.remove('hidden'); bar.value = 0;
   out.innerHTML = '<p class="hint">영상을 만드는 중입니다. 영상 길이만큼 시간이 걸립니다. <b>화면을 끄거나 다른 앱으로 넘어가지 마세요.</b></p>';
   try {
+    const scenes = sceneList();
+    let endVoice = null;
+    if (S.voice !== 'none') {
+      out.innerHTML = '<p class="hint">내레이션 음성을 만드는 중입니다...</p>';
+      const lines = S.scenes.map((sc) => (sc.narration || '').trim());
+      const withEnd = S.ending !== 'none' && S.endNarration.trim();
+      const clips = await tts(withEnd ? lines.concat([S.endNarration.trim()]) : lines, S.voice);
+      scenes.forEach((sc, i) => { sc.voice = clips[i]; });
+      if (withEnd) endVoice = clips[lines.length];
+      out.innerHTML = '<p class="hint">영상을 만드는 중입니다. 영상 길이만큼 시간이 걸립니다. <b>화면을 끄거나 다른 앱으로 넘어가지 마세요.</b></p>';
+    }
     const { blob, mimeType } = await renderShorts({
       headline: S.headline,
-      scenes: sceneList(),
+      scenes,
+      endVoice,
       endCard: S.ending === 'none' ? null : `/assets/shot/endcard-${S.ending}.jpg`,
       endDuration: 3,
       music: S.music === 'none' ? null : `/assets/shot/bgm-${S.music}.mp3`,
@@ -386,6 +446,12 @@ function mount() {
             <label class="f" for="st-music">배경음악<select id="st-music"></select></label>
             <label class="f" for="st-end">엔딩 화면<select id="st-end"></select></label>
           </div>
+          <div class="shot-voice">
+            <label class="f" for="st-voice">내레이션 목소리<select id="st-voice"></select></label>
+            <button class="btn btn-line btn-sm" type="button" id="st-listen">▶ 목소리 들어보기</button>
+            <audio id="st-audio" class="hidden"></audio>
+          </div>
+          <label class="f shot-nar" for="st-endnar">엔딩 내레이션<input id="st-endnar"></label>
         </div>
       </div>
       <div id="shot-scenes" class="shot-scenes"></div>
