@@ -22,5 +22,8 @@
         }
       ]
     }
-  ]
+  ],
+  "functions": {
+    "api/hyunjangshot.js": { "maxDuration": 60 }
+  }
 }
