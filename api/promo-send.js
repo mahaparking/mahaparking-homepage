@@ -1,7 +1,7 @@
 /**
  * 홍보 문자 보내기 (Vercel 서버 함수, 솔라피 사용)
  * 주소: POST /api/promo-send
- * 본문: { promo_id, manager_ids: [..], text, test: true|false }
+ * 본문: { promo_id, manager_ids: [..], text, test: true|false, test_to(테스트 받을 번호, 없으면 설정값) }
  *
  * 법을 지키기 위해 서버에서 한 번 더 확인합니다.
  *  - 수신 동의한 분만, 수신거부한 분은 빼고 보냅니다.
@@ -66,8 +66,8 @@ module.exports = async (req, res) => {
     let targets = [];
     let skipped = 0;
     if (test) {
-      const to = digits(S.test_to);
-      if (!to) return send(res, 400, { error: '설정에서 "테스트 받을 번호"를 먼저 넣어 주세요.' });
+      const to = digits(body.test_to) || digits(S.test_to);
+      if (!/^01\d{8,9}$/.test(to)) return send(res, 400, { error: '설정에서 "테스트 받을 번호"(휴대폰)를 먼저 넣어 주세요.' });
       targets = [{ manager_id: null, name: '테스트(나)', phone: to }];
     } else {
       const ids = (body.manager_ids || []).filter((x) => /^[0-9a-f-]{36}$/i.test(x));

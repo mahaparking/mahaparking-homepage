@@ -617,11 +617,13 @@ function drawSettings() {
     ['sender', '발신번호', '솔라피에 등록한 보내는 번호 (예: 070-4866-1036)'],
     ['company', '회사 표기', '문자 맨 앞 "(광고)" 다음에 들어갑니다'],
     ['company_tel', '대표번호', '문자 맨 앞에 회사명과 함께 들어갑니다'],
-    ['test_to', '테스트 받을 번호', '"나에게 테스트 보내기"가 이 번호로 갑니다 (대표님 휴대폰)'],
+    ['test_to', '테스트 받을 번호', '대표님 휴대폰 · 옆 버튼을 누르면 바로 테스트 문자가 갑니다'],
     ['optout_tel', '080 수신거부 번호', '있으면 문자 끝에 "무료수신거부 080-…"이 들어갑니다. 없으면 수신거부 페이지 주소가 들어갑니다'],
   ];
   body().innerHTML = `<form class="sl-box" id="st-form" novalidate style="max-width:640px">
-      ${fields.map(([k, t, h]) => `<label class="f">${t} <span class="hint">${h}</span><input data-set="${k}" value="${esc(k === 'company' ? S[k] || '' : tel(S[k]))}"></label>`).join('')}
+      ${fields.map(([k, t, h]) => k === 'test_to'
+        ? `<div class="sl-testrow"><label class="f">${t} <span class="hint">${h}</span><span class="sl-inline"><input data-set="${k}" id="st-test" inputmode="tel" value="${esc(tel(S[k]))}" placeholder="010-0000-0000"><button class="btn btn-cta btn-sm" type="button" id="st-testgo">테스트 보내기</button></span></label></div>`
+        : `<label class="f">${t} <span class="hint">${h}</span><input data-set="${k}" value="${esc(k === 'company' ? S[k] || '' : tel(S[k]))}"></label>`).join('')}
       <div class="btns"><button class="btn btn-primary" type="submit">저장</button></div><p class="hint" id="st-msg2" role="status"></p>
     </form>
     <div class="sl-box" style="max-width:640px"><b>처음 한 번 해 둘 일</b>
@@ -631,6 +633,17 @@ function drawSettings() {
         <li>080 무료 수신거부 번호를 신청하면 위 칸에 넣어 주세요 (광고 문자에 권장)</li>
         <li>카카오톡 발송은 카카오톡 채널 개설 · 비즈니스 인증 후 연결합니다</li>
       </ol></div>`;
+  root.querySelector('#st-testgo').onclick = async () => {
+    const btn = root.querySelector('#st-testgo'), to = digits(root.querySelector('#st-test').value);
+    if (!isMobile(to)) { modal('<h3>휴대폰 번호(010…)를 넣어 주세요</h3><button class="btn btn-primary" data-close>확인</button>'); return; }
+    btn.disabled = true; btn.textContent = '보내는 중...';
+    try {
+      if (to !== D.settings.test_to) { await sb.from('sales_settings').upsert({ key: 'test_to', value: to }); D.settings.test_to = to; }
+      const j = await api('/api/promo-send', { test: true, test_to: to, text: '문자 발송 테스트입니다. 이 문자가 보이면 정상입니다.' });
+      modal(`<h3>${j.ok ? '테스트 문자를 보냈습니다' : '보내지 못했습니다'}</h3><p>${esc(tel(to))} 로 ${j.ok ? '보냈습니다. 1분 안에 도착하는지 확인해 주세요.' : esc((j.failed[0] || {}).error || '')}</p><div class="sl-phone"><div class="sl-bubble">${esc(buildMessage('문자 발송 테스트입니다. 이 문자가 보이면 정상입니다.', null))}</div></div><button class="btn btn-primary" data-close>확인</button>`);
+    } catch (err) { oops('테스트 문자를 보내지 못했습니다.', err); }
+    finally { btn.disabled = false; btn.textContent = '테스트 보내기'; }
+  };
   root.querySelector('#st-form').onsubmit = async (e) => {
     e.preventDefault();
     const rows = [...root.querySelectorAll('[data-set]')].map((i) => ({ key: i.dataset.set, value: i.dataset.set === 'company' ? i.value.trim() : digits(i.value) }));
