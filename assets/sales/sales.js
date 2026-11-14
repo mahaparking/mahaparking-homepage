@@ -1,5 +1,5 @@
 /* 영업·홍보 — 관리자 화면의 "영업·홍보" 탭 (마하파킹 ERP 1단계)
- * 관리소장(사람) · 단지(거래처) · 근무 이력 · 홍보물 · 보내기 · 보낸 기록 · 설정
+ * 담당자(관리소장·건물 관리인 등) · 단지·건물(거래처) · 근무 이력 · 홍보물 · 보내기 · 보낸 기록 · 설정
  * 표 구조: supabase/sales.sql
  */
 const sb = supabase.createClient(MAHA.SB_URL, MAHA.SB_KEY);
@@ -7,10 +7,21 @@ const SITE = 'https://mahaparking.co.kr';
 const root = document.getElementById('sales-root');
 
 const D = { sites: [], managers: [], jobs: [], promos: [], sends: [], settings: {}, loaded: false };
-const V = { sub: 'managers', mq: '', mf: 'all', sq: '', sf: 'all', send: { promo: '', ids: new Set(), text: '', opened: new Set() } };
+const V = { sub: 'managers', mq: '', mf: 'all', mk: 'all', sq: '', sf: 'all', sk: 'all', send: { promo: '', ids: new Set(), text: '', opened: new Set() } };
 
-const SUBS = [['managers', '관리소장'], ['sites', '단지·거래처'], ['promos', '홍보물'], ['send', '보내기'], ['history', '보낸 기록'], ['settings', '설정']];
-const SITE_KINDS = ['아파트', '빌라', '오피스텔', '상가', '공영주차장', '물류센터', '공장', '학교', '기타'];
+const SUBS = [['managers', '담당자'], ['sites', '단지·건물'], ['promos', '홍보물'], ['send', '보내기'], ['history', '보낸 기록'], ['settings', '설정']];
+const SITE_KINDS = ['아파트', '건물·빌라', '기타'];
+/** 예전 값(빌라·오피스텔 등)도 세 가지로 묶어 보기 */
+const kindOf = (k) => (k === '아파트' ? '아파트' : /빌라|오피스텔|상가|건물/.test(k || '') ? '건물·빌라' : '기타');
+const guessKind = (name) => (/아파트|단지/.test(name) ? '아파트' : /빌라|맨션|하우스|빌딩|타워|오피스텔|상가|건물|프라자|센터|빌|팰리스|캐슬/.test(name) ? '건물·빌라' : '기타');
+const KIND_ALL = ['all', '전체 구분'];
+const TITLES = ['관리소장', '관리과장', '관리인', '건물주', '관리단 대표', '시설 담당'];
+/** 구분별 문구 예시 (보내기 3번에서 눌러 채움) */
+const TEMPLATES = {
+  '아파트': '소장님, 안녕하세요. 주차장비 유지보수 전문 마하파킹입니다.\n차단기·차단바·번호인식 장비를 통째로 바꾸지 않고, 고장 난 부분만 살려 새것처럼 고친 아파트 작업 사례를 보내드립니다.\n장비 점검이 필요하시면 편하게 연락 주세요.',
+  '건물·빌라': '안녕하세요, 주차장비 유지보수 전문 마하파킹입니다.\n건물·빌라 주차 차단기가 고장 나거나 차단바가 부러졌을 때 빠르게 방문해 합리적인 비용으로 고쳐 드립니다.\n작업 사례를 보내드리니 필요하실 때 연락 주세요.',
+  '기타': '안녕하세요, 주차장비 유지보수 전문 마하파킹입니다.\n주차 차단기·경광등·번호인식 장비 수리와 업그레이드 사례를 보내드립니다.\n점검이나 견적이 필요하시면 편하게 연락 주세요.',
+};
 const SITE_ST = { lead: ['영업 대상', 'st-new'], client: ['거래처', 'st-sent'], hold: ['보류', 'st-quote'] };
 const HOW = ['방문 때 구두 동의', '명함 받을 때 동의', '전화로 동의', '홈페이지 신청', '문서·메일 동의'];
 
@@ -62,7 +73,8 @@ function buildMessage(text, promo) {
 /* ---------- 관계 ---------- */
 const curJobs = (mid) => D.jobs.filter((j) => j.manager_id === mid && j.is_current);
 const jobSite = (j) => (j.site_id && byId(D.sites, j.site_id)) || null;
-const jobName = (j) => { const s = jobSite(j); return s ? s.name : j.site_name || '(단지 미등록)'; };
+const jobName = (j) => { const s = jobSite(j); return s ? s.name : j.site_name || '(근무지 미등록)'; };
+const mgrKinds = (mid) => curJobs(mid).map((j) => kindOf((jobSite(j) || { kind: guessKind(j.site_name || '') }).kind));
 const curSiteText = (mid) => curJobs(mid).map(jobName).join(', ');
 const siteManagers = (sid) => D.jobs.filter((j) => j.site_id === sid && j.is_current).map((j) => byId(D.managers, j.manager_id)).filter(Boolean);
 const sendable = (m) => m.consent && !m.opt_out && isMobile(m.mobile);
@@ -104,17 +116,18 @@ function mount() {
 const body = () => root.querySelector('#sl-body');
 
 /* =========================================================
- * 1. 관리소장
+ * 1. 담당자 (관리소장 · 건물 관리인 · 건물주 등)
  * ========================================================= */
 function drawManagers() {
   const F = { all: '전체', consent: '수신 동의', none: '동의 안 받음', optout: '수신거부', worked: '함께 일해 본 분' };
   body().innerHTML = `
-    <p class="hint">명함을 찍으면 이름·휴대폰·단지가 자동으로 들어갑니다. 소장님이 다른 단지로 옮기시면 <b>근무지 변경</b>을 눌러 주세요. 연락처와 수신 동의는 소장님을 따라갑니다.</p>
+    <p class="hint">아파트 관리소장님, 건물·빌라 관리인·건물주 등 연락할 분을 모읍니다. 명함을 찍으면 이름·휴대폰·근무지가 자동으로 들어갑니다. 다른 곳으로 옮기시면 <b>근무지 변경</b>을 눌러 주세요. 연락처와 수신 동의는 사람을 따라갑니다.</p>
     <div class="add-row" style="align-items:center">
       <button class="btn btn-primary btn-sm" type="button" id="m-card">📷 명함으로 등록</button>
       <button class="btn btn-line btn-sm" type="button" id="m-add">+ 직접 등록</button>
       <input type="file" id="m-file" accept="image/*" capture="environment" class="hidden">
-      <input id="m-q" placeholder="이름 · 단지 · 번호 찾기" value="${esc(V.mq)}" style="max-width:220px">
+      <input id="m-q" placeholder="이름 · 근무지 · 번호 찾기" value="${esc(V.mq)}" style="max-width:220px">
+      <select id="m-k" style="width:auto">${[KIND_ALL].concat(SITE_KINDS.map((k) => [k, k])).map(([v, t]) => `<option value="${v}"${v === V.mk ? ' selected' : ''}>${t}</option>`).join('')}</select>
       <select id="m-f" style="width:auto">${Object.keys(F).map((k) => `<option value="${k}"${k === V.mf ? ' selected' : ''}>${F[k]}</option>`).join('')}</select>
     </div>
     <div class="sl-kpis">${[['등록', D.managers.length], ['수신 동의', D.managers.filter(sendable).length], ['함께 일해 봄', D.managers.filter((m) => m.worked_with).length], ['수신거부', D.managers.filter((m) => m.opt_out).length]].map(([k, v]) => `<div><span>${k}</span><b>${v}</b></div>`).join('')}</div>
@@ -126,6 +139,7 @@ function drawManagers() {
       if (V.mf === 'none' && (m.consent || m.opt_out)) return false;
       if (V.mf === 'optout' && !m.opt_out) return false;
       if (V.mf === 'worked' && !m.worked_with) return false;
+      if (V.mk !== 'all' && !mgrKinds(m.id).includes(V.mk)) return false;
       if (!qq) return true;
       return [m.name, m.title, m.mobile, digits(m.mobile), curSiteText(m.id), m.memo].join(' ').replace(/\s/g, '').toLowerCase().includes(qq);
     });
@@ -135,15 +149,16 @@ function drawManagers() {
           ${m.opt_out ? '<span class="status st-new">수신거부</span>' : m.consent ? '<span class="status st-sent">수신 동의</span>' : '<span class="status st-quote">동의 전</span>'}
           ${m.worked_with ? '<span class="status sl-worked">함께 일함</span>' : ''}
           ${m.source === 'web' ? '<span class="status st-quote">홈페이지 신청</span>' : ''}</div>
-        <div class="sl-line">🏢 ${esc(curSiteText(m.id) || '근무지 미등록')}</div>
+        <div class="sl-line">🏢 ${esc(curSiteText(m.id) || '근무지 미등록')}${[...new Set(mgrKinds(m.id))].map((k) => ` <span class="status sl-kind">${k}</span>`).join('')}</div>
         <div class="sl-line">${m.mobile ? `📱 <a href="tel:${digits(m.mobile)}">${esc(tel(m.mobile))}</a>` : '<span class="hint">휴대폰 없음</span>'}</div>
         <div class="sl-btns"><button class="btn btn-line btn-sm" type="button" data-open="${m.id}">자세히 · 수정</button><button class="btn btn-line btn-sm" type="button" data-move="${m.id}">근무지 변경</button></div>
-      </div>`).join('') : '<p class="empty">등록된 관리소장님이 없습니다. 명함을 찍어 첫 분을 등록해 보세요.</p>';
+      </div>`).join('') : '<p class="empty">해당하는 담당자가 없습니다. 명함을 찍어 등록해 보세요.</p>';
     root.querySelectorAll('[data-open]').forEach((b) => { b.onclick = () => managerModal(byId(D.managers, b.dataset.open)); });
     root.querySelectorAll('[data-move]').forEach((b) => { b.onclick = () => moveModal(byId(D.managers, b.dataset.move)); });
   };
   root.querySelector('#m-q').oninput = (e) => { V.mq = e.target.value; draw(); };
   root.querySelector('#m-f').onchange = (e) => { V.mf = e.target.value; draw(); };
+  root.querySelector('#m-k').onchange = (e) => { V.mk = e.target.value; draw(); };
   root.querySelector('#m-add').onclick = () => managerModal(null);
   root.querySelector('#m-card').onclick = () => root.querySelector('#m-file').click();
   root.querySelector('#m-file').onchange = (e) => { const f = e.target.files[0]; e.target.value = ''; if (f) scanCard(f); };
@@ -158,7 +173,7 @@ async function scanCard(file) {
     const b64 = await new Promise((res) => { const r = new FileReader(); r.onload = () => res(String(r.result).split(',')[1]); r.readAsDataURL(s.blob); });
     const j = await api('/api/card-scan', { b64 });
     const c = j.card || {};
-    managerModal(null, { name: c.name, title: c.title || '관리소장', mobile: c.mobile, email: c.email, site: c.org, office_tel: c.office_tel, office_fax: c.office_fax, address: c.address, mgmt_company: c.mgmt_company, cardBlob: s.blob, cardUrl: s.url });
+    managerModal(null, { name: c.name, title: c.title || '', mobile: c.mobile, email: c.email, site: c.org, office_tel: c.office_tel, office_fax: c.office_fax, address: c.address, mgmt_company: c.mgmt_company, cardBlob: s.blob, cardUrl: s.url });
   } catch (e) {
     oops('명함을 읽지 못했습니다. 직접 입력해 주세요.', e);
   }
@@ -168,21 +183,21 @@ function siteDatalist() { return `<datalist id="sl-sites">${D.sites.map((s) => `
 
 function managerModal(m, pre) {
   const isNew = !m;
-  const x = m || { name: '', title: '관리소장', mobile: '', email: '', consent: false, consent_how: HOW[1], worked_with: false, memo: '' };
+  const x = m || { name: '', title: '', mobile: '', email: '', consent: false, consent_how: HOW[1], worked_with: false, memo: '' };
   if (pre) Object.keys(pre).forEach((k) => { if (pre[k] && k in x) x[k] = pre[k]; });
   const jobs = m ? D.jobs.filter((j) => j.manager_id === m.id) : [];
-  modal(`<h3>${isNew ? '관리소장님 등록' : '관리소장님 정보'}</h3>
+  modal(`<h3>${isNew ? '담당자 등록' : '담당자 정보'}</h3>
     ${pre && pre.cardUrl ? `<img src="${pre.cardUrl}" alt="명함 사진" style="max-height:160px;border-radius:10px;object-fit:contain;background:#F7F9FB"><p class="hint" style="margin:0">명함에서 읽은 내용입니다. 틀린 곳이 있으면 고쳐 주세요.</p>` : ''}
-    <div class="row2"><label class="f">이름<input id="mm-name" value="${esc(x.name)}"></label><label class="f">직함<input id="mm-title" value="${esc(x.title || '')}"></label></div>
+    <div class="row2"><label class="f">이름<input id="mm-name" value="${esc(x.name)}"></label><label class="f">직함<input id="mm-title" list="sl-titles" value="${esc(x.title || '')}" placeholder="관리소장 · 관리인 · 건물주 등"><datalist id="sl-titles">${TITLES.map((t) => `<option value="${t}">`).join('')}</datalist></label></div>
     <div class="row2"><label class="f">휴대폰<input id="mm-mobile" inputmode="tel" value="${esc(tel(x.mobile))}"></label><label class="f">이메일<input id="mm-email" type="email" value="${esc(x.email || '')}"></label></div>
-    ${isNew ? `<label class="f">현재 근무 단지 <span class="hint">(등록된 단지에서 고르거나 새 이름을 적으면 단지가 함께 만들어집니다)</span><input id="mm-site" list="sl-sites" value="${esc((pre && pre.site) || '')}">${siteDatalist()}</label>` : ''}
+    ${isNew ? `<label class="f">현재 근무지 (아파트·건물 이름) <span class="hint">(등록된 곳에서 고르거나 새 이름을 적으면 함께 만들어집니다)</span><input id="mm-site" list="sl-sites" value="${esc((pre && pre.site) || '')}">${siteDatalist()}</label>` : ''}
     <div class="sl-consent">
       <label class="sl-chk"><input type="checkbox" id="mm-consent"${x.consent && !x.opt_out ? ' checked' : ''}> <b>홍보 문자·카톡 수신에 동의하셨습니다</b></label>
       <select id="mm-how" style="width:auto">${opt(HOW, x.consent_how || HOW[1])}</select>
       ${m && m.consent_at ? `<span class="hint">동의 기록: ${fmtDate(m.consent_at)} · ${esc(m.consent_how || '')}</span>` : ''}
       ${m && m.opt_out ? `<span class="hint" style="color:var(--stop)">${fmtDate(m.opt_out_at)} 수신거부하셨습니다. 다시 동의를 받으신 경우에만 체크해 주세요.</span>` : ''}
     </div>
-    <label class="sl-chk"><input type="checkbox" id="mm-worked"${x.worked_with ? ' checked' : ''}> 마하파킹과 함께 일해 본 소장님</label>
+    <label class="sl-chk"><input type="checkbox" id="mm-worked"${x.worked_with ? ' checked' : ''}> 마하파킹과 함께 일해 본 분</label>
     <label class="f">메모 <span class="hint">(성향, 관심 장비, 다음 연락 시기 등)</span><textarea id="mm-memo">${esc(x.memo || '')}</textarea></label>
     ${m ? `<div><b style="font-size:14px">근무 이력</b><ul class="sl-hist">${jobs.length ? jobs.map((j) => `<li><span>${esc(jobName(j))}</span><span class="hint">${fmtDate(j.start_date) || '?'} ~ ${j.is_current ? '현재' : fmtDate(j.end_date)}</span></li>`).join('') : '<li class="hint">근무 이력이 없습니다.</li>'}</ul></div>` : ''}
     <div class="btns"><button class="btn btn-primary" id="mm-save">저장</button>${m ? '<button class="btn btn-line" id="mm-move">근무지 변경</button><button class="btn btn-danger" id="mm-del">삭제</button>' : ''}<button class="btn btn-line" data-close>닫기</button></div>
@@ -238,7 +253,7 @@ function managerModal(m, pre) {
 async function ensureSite(name, pre) {
   let s = siteByName(name);
   if (s) return { site: s, created: false };
-  const row = { name: name.trim(), kind: /빌라|맨션|하우스/.test(name) ? '빌라' : '아파트', status: 'lead' };
+  const row = { name: name.trim(), kind: guessKind(name), status: 'lead' };
   if (pre) { if (pre.office_tel) row.office_tel = digits(pre.office_tel); if (pre.office_fax) row.office_fax = digits(pre.office_fax); if (pre.address) row.address = pre.address; if (pre.mgmt_company) row.mgmt_company = pre.mgmt_company; }
   s = await q(sb.from('sites').insert(row).select().single(), '단지를 만들지 못했습니다.');
   D.sites.push(s); D.sites.sort((a, b) => a.name.localeCompare(b.name, 'ko'));
@@ -255,17 +270,17 @@ async function startJob(m, siteName, start, pre) {
 
 function moveModal(m) {
   const cur = curJobs(m.id);
-  modal(`<h3>${esc(m.name)} 소장님 근무지 변경</h3>
-    <p class="hint" style="margin:0">지금 근무지: <b>${esc(cur.map(jobName).join(', ') || '없음')}</b><br>옮기시면 이전 단지는 "새 소장님 확인 필요"로 표시되고, 새 단지가 아직 거래처가 아니면 <b>영업 대상</b>으로 등록됩니다.</p>
-    <label class="f">새 근무 단지<input id="mv-site" list="sl-sites" placeholder="단지 이름">${siteDatalist()}</label>
+  modal(`<h3>${esc(m.name)} ${esc(m.title || '')}님 근무지 변경</h3>
+    <p class="hint" style="margin:0">지금 근무지: <b>${esc(cur.map(jobName).join(', ') || '없음')}</b><br>옮기시면 이전 근무지는 "새 담당자 확인 필요"로 표시되고, 새 근무지가 아직 거래처가 아니면 <b>영업 대상</b>으로 등록됩니다.</p>
+    <label class="f">새 근무지 (아파트·건물 이름)<input id="mv-site" list="sl-sites" placeholder="아파트·건물 이름">${siteDatalist()}</label>
     <label class="f">옮기신 날<input id="mv-date" type="date" value="${today()}"></label>
     <div class="btns"><button class="btn btn-primary" id="mv-go">변경하기</button><button class="btn btn-line" data-close>취소</button></div>
     <p class="hint" id="mv-msg" role="status"></p>`);
   const g = (id) => document.getElementById(id);
   g('mv-go').onclick = async () => {
     const name = g('mv-site').value.trim(), d = g('mv-date').value || today();
-    if (!name) { g('mv-msg').textContent = '새 단지 이름을 적어 주세요.'; return; }
-    if (cur.some((j) => jobName(j).replace(/\s/g, '') === name.replace(/\s/g, ''))) { g('mv-msg').textContent = '지금 근무 중인 단지와 같습니다.'; return; }
+    if (!name) { g('mv-msg').textContent = '새 근무지 이름을 적어 주세요.'; return; }
+    if (cur.some((j) => jobName(j).replace(/\s/g, '') === name.replace(/\s/g, ''))) { g('mv-msg').textContent = '지금 근무 중인 곳과 같습니다.'; return; }
     g('mv-go').disabled = true;
     try {
       const oldSites = cur.map(jobSite).filter(Boolean);
@@ -279,9 +294,9 @@ function moveModal(m) {
       }
       const { site, created } = await startJob(m, name, d);
       modal(`<h3>근무지를 바꿨습니다</h3>
-        <p><b>${esc(m.name)}</b> 소장님 → <b>${esc(site.name)}</b></p>
-        ${site.status !== 'client' ? `<div class="notice"><b>${esc(site.name)}</b>${created ? '을(를) 새로 만들고' : '은(는)'} 영업 대상입니다. 마하파킹을 아시는 소장님이 계신 곳이니 먼저 연락해 보세요.</div>` : ''}
-        ${flagged.length ? `<p class="hint">${esc(flagged.join(', '))}: 다음 방문 때 새 소장님 명함을 받아 주세요.</p>` : ''}
+        <p><b>${esc(m.name)}</b> ${esc(m.title || '')}님 → <b>${esc(site.name)}</b></p>
+        ${site.status !== 'client' ? `<div class="notice"><b>${esc(site.name)}</b>${created ? '을(를) 새로 만들고' : '은(는)'} 영업 대상입니다. 마하파킹을 아시는 분이 계신 곳이니 먼저 연락해 보세요.</div>` : ''}
+        ${flagged.length ? `<p class="hint">${esc(flagged.join(', '))}: 다음 방문 때 새 담당자 명함을 받아 주세요.</p>` : ''}
         <button class="btn btn-primary" data-close>확인</button>`);
       mount();
     } catch (e) { g('mv-go').disabled = false; oops(e.userMsg || '변경하지 못했습니다.', e); }
@@ -289,38 +304,41 @@ function moveModal(m) {
 }
 
 /* =========================================================
- * 2. 단지 · 거래처
+ * 2. 단지·건물 (거래처)
  * ========================================================= */
 function drawSites() {
-  const F = { all: '전체', client: '거래처', lead: '영업 대상', need: '새 소장님 확인 필요', hold: '보류' };
+  const F = { all: '전체 상태', client: '거래처', lead: '영업 대상', need: '새 담당자 확인 필요', hold: '보류' };
   body().innerHTML = `
-    <p class="hint">단지(거래처)는 그대로 남고 소장님만 바뀝니다. 견적·작업·세금계산서도 앞으로 이 단지에 이어 붙습니다.</p>
+    <p class="hint">아파트 · 건물·빌라 · 기타로 나눠 관리합니다. 거래처는 그대로 남고 담당자만 바뀝니다. 견적·작업·세금계산서도 앞으로 이곳에 이어 붙습니다.</p>
     <div class="add-row" style="align-items:center">
-      <button class="btn btn-primary btn-sm" type="button" id="s-add">+ 단지 등록</button>
-      <input id="s-q" placeholder="단지 · 지역 찾기" value="${esc(V.sq)}" style="max-width:220px">
+      <button class="btn btn-primary btn-sm" type="button" id="s-add">+ 등록</button>
+      <input id="s-q" placeholder="이름 · 지역 찾기" value="${esc(V.sq)}" style="max-width:220px">
+      <select id="s-k" style="width:auto">${[KIND_ALL].concat(SITE_KINDS.map((k) => [k, k])).map(([v, t]) => `<option value="${v}"${v === V.sk ? ' selected' : ''}>${t}</option>`).join('')}</select>
       <select id="s-f" style="width:auto">${Object.keys(F).map((k) => `<option value="${k}"${k === V.sf ? ' selected' : ''}>${F[k]}</option>`).join('')}</select>
     </div>
-    <div class="sl-kpis">${[['전체', D.sites.length], ['거래처', D.sites.filter((s) => s.status === 'client').length], ['영업 대상', D.sites.filter((s) => s.status === 'lead').length], ['새 소장님 확인', D.sites.filter((s) => s.need_new_manager).length]].map(([k, v]) => `<div><span>${k}</span><b>${v}</b></div>`).join('')}</div>
+    <div class="sl-kpis">${[['아파트', D.sites.filter((s) => kindOf(s.kind) === '아파트').length], ['건물·빌라', D.sites.filter((s) => kindOf(s.kind) === '건물·빌라').length], ['거래처', D.sites.filter((s) => s.status === 'client').length], ['새 담당자 확인', D.sites.filter((s) => s.need_new_manager).length]].map(([k, v]) => `<div><span>${k}</span><b>${v}</b></div>`).join('')}</div>
     <div class="sl-list" id="s-list"></div>`;
   const draw = () => {
     const qq = V.sq.replace(/\s/g, '').toLowerCase();
     const list = D.sites.filter((s) => {
       if (V.sf === 'need' ? !s.need_new_manager : V.sf !== 'all' && s.status !== V.sf) return false;
+      if (V.sk !== 'all' && kindOf(s.kind) !== V.sk) return false;
       return !qq || [s.name, s.region, s.address, s.mgmt_company].join(' ').replace(/\s/g, '').toLowerCase().includes(qq);
     });
     root.querySelector('#s-list').innerHTML = list.length ? list.map((s) => {
       const ms = siteManagers(s.id), st = SITE_ST[s.status] || SITE_ST.lead;
       return `<div class="sl-card">
-        <div class="sl-card-h"><b>${esc(s.name)}</b><span class="hint">${esc(s.kind || '')}${s.region ? ' · ' + esc(s.region) : ''}</span><span class="status ${st[1]}">${st[0]}</span>${s.need_new_manager ? '<span class="status st-new">새 소장님 확인</span>' : ''}</div>
-        <div class="sl-line">👤 ${ms.length ? ms.map((m) => `${esc(m.name)} ${esc(m.title || '')}`).join(', ') : '<span class="hint">소장님 미등록</span>'}</div>
+        <div class="sl-card-h"><b>${esc(s.name)}</b><span class="status sl-kind">${kindOf(s.kind)}</span><span class="status ${st[1]}">${st[0]}</span>${s.need_new_manager ? '<span class="status st-new">새 담당자 확인</span>' : ''}${s.region ? `<span class="hint">${esc(s.region)}</span>` : ''}</div>
+        <div class="sl-line">👤 ${ms.length ? ms.map((m) => `${esc(m.name)} ${esc(m.title || '')}`).join(', ') : '<span class="hint">담당자 미등록</span>'}</div>
         <div class="sl-line">${s.office_tel ? `☎ <a href="tel:${digits(s.office_tel)}">${esc(tel(s.office_tel))}</a>` : ''}${s.office_fax ? ` <span class="hint">팩스 ${esc(tel(s.office_fax))}</span>` : ''}${s.households ? ` <span class="hint">· ${s.households}세대</span>` : ''}</div>
         <div class="sl-btns"><button class="btn btn-line btn-sm" type="button" data-sopen="${s.id}">자세히 · 수정</button></div>
       </div>`;
-    }).join('') : '<p class="empty">해당하는 단지가 없습니다.</p>';
+    }).join('') : '<p class="empty">해당하는 곳이 없습니다.</p>';
     root.querySelectorAll('[data-sopen]').forEach((b) => { b.onclick = () => siteModal(byId(D.sites, b.dataset.sopen)); });
   };
   root.querySelector('#s-q').oninput = (e) => { V.sq = e.target.value; draw(); };
   root.querySelector('#s-f').onchange = (e) => { V.sf = e.target.value; draw(); };
+  root.querySelector('#s-k').onchange = (e) => { V.sk = e.target.value; draw(); };
   root.querySelector('#s-add').onclick = () => siteModal(null);
   draw();
 }
@@ -328,24 +346,24 @@ function drawSites() {
 function siteModal(s) {
   const x = s || { name: '', kind: '아파트', region: '', address: '', office_tel: '', office_fax: '', households: '', mgmt_company: '', equipment: '', status: 'lead', need_new_manager: false, memo: '' };
   const hist = s ? D.jobs.filter((j) => j.site_id === s.id) : [];
-  modal(`<h3>${s ? '단지 정보' : '단지 등록'}</h3>
-    <div class="row2"><label class="f">단지 이름<input id="ss-name" value="${esc(x.name)}"></label><label class="f">종류<select id="ss-kind">${opt(SITE_KINDS, x.kind)}</select></label></div>
+  modal(`<h3>${s ? '단지·건물 정보' : '단지·건물 등록'}</h3>
+    <div class="row2"><label class="f">이름 <span class="hint">(아파트·건물·빌라 이름)</span><input id="ss-name" value="${esc(x.name)}"></label><label class="f">구분<select id="ss-kind">${opt(SITE_KINDS, kindOf(x.kind))}</select></label></div>
     <div class="row2"><label class="f">지역<input id="ss-region" value="${esc(x.region || '')}" placeholder="예) 안양 만안구"></label><label class="f">상태<select id="ss-status">${Object.keys(SITE_ST).map((k) => `<option value="${k}"${k === x.status ? ' selected' : ''}>${SITE_ST[k][0]}</option>`).join('')}</select></label></div>
     <label class="f">주소<input id="ss-addr" value="${esc(x.address || '')}"></label>
-    <div class="row3"><label class="f">관리사무소 전화<input id="ss-tel" inputmode="tel" value="${esc(tel(x.office_tel))}"></label><label class="f">팩스<input id="ss-fax" inputmode="tel" value="${esc(tel(x.office_fax))}"></label><label class="f">세대수<input id="ss-hh" inputmode="numeric" value="${esc(x.households || '')}"></label></div>
+    <div class="row3"> <label class="f">관리사무소·대표 전화<input id="ss-tel" inputmode="tel" value="${esc(tel(x.office_tel))}"></label><label class="f">팩스<input id="ss-fax" inputmode="tel" value="${esc(tel(x.office_fax))}"></label><label class="f">세대수·호수<input id="ss-hh" inputmode="numeric" value="${esc(x.households || '')}"></label></div>
     <label class="f">위탁관리회사<input id="ss-mc" value="${esc(x.mgmt_company || '')}"></label>
     <label class="f">설치 장비 <span class="hint">(차단기 대수, 제조사, 번호인식 여부 등)</span><textarea id="ss-eq">${esc(x.equipment || '')}</textarea></label>
     <label class="f">메모<textarea id="ss-memo">${esc(x.memo || '')}</textarea></label>
-    <label class="sl-chk"><input type="checkbox" id="ss-need"${x.need_new_manager ? ' checked' : ''}> 새 소장님 확인 필요</label>
-    ${s ? `<div><b style="font-size:14px">이 단지의 소장님 이력</b><ul class="sl-hist">${hist.length ? hist.map((j) => { const m = byId(D.managers, j.manager_id); return `<li><span>${esc(m ? m.name : '?')} ${esc(m ? m.title || '' : '')}</span><span class="hint">${fmtDate(j.start_date) || '?'} ~ ${j.is_current ? '현재' : fmtDate(j.end_date)}</span></li>`; }).join('') : '<li class="hint">아직 없습니다.</li>'}</ul></div>` : ''}
+    <label class="sl-chk"><input type="checkbox" id="ss-need"${x.need_new_manager ? ' checked' : ''}> 새 담당자 확인 필요</label>
+    ${s ? `<div><b style="font-size:14px">이곳의 담당자 이력</b><ul class="sl-hist">${hist.length ? hist.map((j) => { const m = byId(D.managers, j.manager_id); return `<li><span>${esc(m ? m.name : '?')} ${esc(m ? m.title || '' : '')}</span><span class="hint">${fmtDate(j.start_date) || '?'} ~ ${j.is_current ? '현재' : fmtDate(j.end_date)}</span></li>`; }).join('') : '<li class="hint">아직 없습니다.</li>'}</ul></div>` : ''}
     <div class="btns"><button class="btn btn-primary" id="ss-save">저장</button>${s ? '<button class="btn btn-danger" id="ss-del">삭제</button>' : ''}<button class="btn btn-line" data-close>닫기</button></div>
     <p class="hint" id="ss-msg" role="status"></p>`);
   const g = (id) => document.getElementById(id);
   g('ss-save').onclick = async () => {
     const name = g('ss-name').value.trim();
-    if (!name) { g('ss-msg').textContent = '단지 이름을 적어 주세요.'; return; }
+    if (!name) { g('ss-msg').textContent = '이름을 적어 주세요.'; return; }
     const same = siteByName(name);
-    if (same && (!s || same.id !== s.id)) { g('ss-msg').textContent = '같은 이름의 단지가 이미 있습니다.'; return; }
+    if (same && (!s || same.id !== s.id)) { g('ss-msg').textContent = '같은 이름이 이미 등록되어 있습니다.'; return; }
     const row = { name, kind: g('ss-kind').value, region: g('ss-region').value.trim() || null, status: g('ss-status').value, address: g('ss-addr').value.trim() || null, office_tel: digits(g('ss-tel').value) || null, office_fax: digits(g('ss-fax').value) || null, households: parseInt(digits(g('ss-hh').value), 10) || null, mgmt_company: g('ss-mc').value.trim() || null, equipment: g('ss-eq').value.trim() || null, memo: g('ss-memo').value.trim() || null, need_new_manager: g('ss-need').checked, updated_at: nowIso() };
     g('ss-save').disabled = true;
     try {
@@ -360,7 +378,7 @@ function siteModal(s) {
     } catch (e) { g('ss-save').disabled = false; oops(e.userMsg || '저장하지 못했습니다.', e); }
   };
   if (s) g('ss-del').onclick = () => {
-    modal(`<h3>${esc(s.name)} 단지를 삭제할까요?</h3><p>소장님 정보는 남고, 근무 이력에는 단지 이름만 남습니다.</p><div class="btns"><button class="btn btn-danger" id="ss-del2">삭제</button><button class="btn btn-line" data-close>취소</button></div>`);
+    modal(`<h3>${esc(s.name)}을(를) 삭제할까요?</h3><p>담당자 정보는 남고, 근무 이력에는 이름만 남습니다.</p><div class="btns"><button class="btn btn-danger" id="ss-del2">삭제</button><button class="btn btn-line" data-close>취소</button></div>`);
     g('ss-del2').onclick = async () => {
       try {
         await q(sb.from('sites').delete().eq('id', s.id), '삭제하지 못했습니다.');
@@ -403,12 +421,12 @@ function mmsJpeg(file) {
 
 function drawPromos() {
   body().innerHTML = `
-    <p class="hint">작업 사례 사진·홍보 이미지·동영상을 올려 두면 <b>보내기</b>에서 골라 보낼 수 있습니다. 홍보물마다 소장님이 열어 볼 수 있는 보기 페이지(${SITE}/m/?p=…)가 자동으로 생깁니다.</p>
+    <p class="hint">작업 사례 사진·홍보 이미지·동영상을 올려 두면 <b>보내기</b>에서 골라 보낼 수 있습니다. 홍보물마다 받는 분이 열어 볼 수 있는 보기 페이지(${SITE}/m/?p=…)가 자동으로 생깁니다.</p>
     <form class="sl-box" id="p-form" novalidate>
       <b>새 홍보물 올리기</b>
       <label class="f">제목<input id="p-title" placeholder="예) 안양 OO아파트 차단기 업싸이클링 사례"></label>
       <label class="f">파일 <span class="hint">(이미지 또는 동영상 · 동영상은 50MB 이하, 휴대폰 세로 영상 권장)</span><input id="p-file" type="file" accept="image/*,video/mp4,video/quicktime,video/webm"></label>
-      <label class="f">기본 안내 문구 <span class="hint">(보낼 때 고칠 수 있습니다)</span><textarea id="p-body" placeholder="예) 소장님, 안녕하세요. 마하파킹입니다.&#10;고장 난 차단기를 통째로 바꾸지 않고 부품만 살려 새것처럼 고친 사례를 보내드립니다."></textarea></label>
+      <label class="f">기본 안내 문구 <span class="hint">(보낼 때 고칠 수 있습니다)</span><textarea id="p-body" placeholder="예) 안녕하세요, 마하파킹입니다.&#10;고장 난 차단기를 통째로 바꾸지 않고 부품만 살려 새것처럼 고친 사례를 보내드립니다."></textarea></label>
       <div class="btns"><button class="btn btn-primary" type="submit" id="p-save">올리기</button></div>
       <p class="hint" id="p-msg" role="status"></p>
     </form>
@@ -506,8 +524,11 @@ function drawSend() {
   const groups = {
     all: ['수신 동의 전체', () => ok],
     worked: ['함께 일해 본 분', () => ok.filter((m) => m.worked_with)],
-    client: ['거래처 소장님', () => ok.filter((m) => curJobs(m.id).some((j) => (jobSite(j) || {}).status === 'client'))],
-    lead: ['영업 대상 단지 소장님', () => ok.filter((m) => curJobs(m.id).some((j) => (jobSite(j) || {}).status === 'lead'))],
+    client: ['거래처', () => ok.filter((m) => curJobs(m.id).some((j) => (jobSite(j) || {}).status === 'client'))],
+    lead: ['영업 대상', () => ok.filter((m) => curJobs(m.id).some((j) => (jobSite(j) || {}).status === 'lead'))],
+    k_apt: ['아파트', () => ok.filter((m) => mgrKinds(m.id).includes('아파트'))],
+    k_bld: ['건물·빌라', () => ok.filter((m) => mgrKinds(m.id).includes('건물·빌라'))],
+    k_etc: ['기타', () => ok.filter((m) => mgrKinds(m.id).includes('기타'))],
   };
   const night = kstHour() >= 21 || kstHour() < 8;
   body().innerHTML = `
@@ -518,11 +539,12 @@ function drawSend() {
     <div class="sl-step"><b><span class="sl-no">2</span>받는 분 고르기</b>
       <div class="add-row" style="margin:6px 0">${Object.keys(groups).map((k) => `<button class="btn btn-line btn-sm" type="button" data-grp="${k}">${groups[k][0]} (${groups[k][1]().length})</button>`).join('')}<button class="btn btn-line btn-sm" type="button" id="x-clear">모두 해제</button></div>
       <p class="hint" style="margin:0 0 6px">수신 동의한 분만 고를 수 있습니다. 빠진 분: 동의 전 ${ex.none}명 · 수신거부 ${ex.out}명 · 휴대폰 없음 ${ex.noNum}명</p>
-      <div class="sl-pick">${ok.length ? ok.map((m) => `<label class="sl-chk"><input type="checkbox" data-pick="${m.id}"${S.ids.has(m.id) ? ' checked' : ''}> <span><b>${esc(m.name)}</b> <span class="hint">${esc(curSiteText(m.id) || '')} · ${esc(tel(m.mobile))}</span></span></label>`).join('') : '<p class="empty">수신 동의한 소장님이 아직 없습니다. 관리소장 화면에서 동의를 체크해 주세요.</p>'}</div>
+      <div class="sl-pick">${ok.length ? ok.map((m) => `<label class="sl-chk"><input type="checkbox" data-pick="${m.id}"${S.ids.has(m.id) ? ' checked' : ''}> <span><b>${esc(m.name)}</b> <span class="hint">${esc(curSiteText(m.id) || '')} · ${esc(tel(m.mobile))}</span></span></label>`).join('') : '<p class="empty">수신 동의한 분이 아직 없습니다. 담당자 화면에서 동의를 체크해 주세요.</p>'}</div>
       <p style="margin:6px 0 0"><b id="x-count">${S.ids.size}</b>명 선택</p>
     </div>
     <div class="sl-step"><b><span class="sl-no">3</span>문구 쓰기</b>
-      <textarea id="x-text" style="min-height:120px" placeholder="소장님, 안녕하세요. 마하파킹입니다.">${esc(S.text)}</textarea>
+      <div class="add-row" style="margin:2px 0 4px;align-items:center"><span class="hint">문구 예시:</span>${SITE_KINDS.map((k) => `<button class="btn btn-line btn-sm" type="button" data-tpl="${k}">${k}용</button>`).join('')}</div>
+      <textarea id="x-text" style="min-height:120px" placeholder="안녕하세요, 마하파킹입니다.">${esc(S.text)}</textarea>
       <p class="hint" style="margin:6px 0">맨 앞 "(광고)회사명 대표번호"와 맨 끝 수신거부 안내는 법에 따라 자동으로 붙습니다.</p>
       <div class="sl-phone"><div class="sl-bubble" id="x-prev"></div></div>
       <p class="hint" id="x-type"></p>
@@ -554,6 +576,7 @@ function drawSend() {
   $$('#x-clear').onclick = () => { S.ids.clear(); drawSend(); };
   root.querySelectorAll('[data-pick]').forEach((c) => { c.onchange = () => { if (c.checked) S.ids.add(c.dataset.pick); else S.ids.delete(c.dataset.pick); count(); }; });
   $$('#x-text').oninput = (e) => { S.text = e.target.value; drawPrev(); };
+  root.querySelectorAll('[data-tpl]').forEach((b) => { b.onclick = () => { S.text = TEMPLATES[b.dataset.tpl]; $$('#x-text').value = S.text; drawPrev(); }; });
   const go = async (test) => {
     const msg = $$('#x-msg');
     const warn = (t) => modal(`<h3>${t}</h3><button class="btn btn-primary" data-close>확인</button>`);
