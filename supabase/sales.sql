@@ -118,6 +118,11 @@ begin
   end loop;
 end $$;
 
+-- 표 사용 권한: 로그인한 사용자에게 열고, 실제 허용은 위 잠금 규칙(관리자만)이 정함
+grant select, insert, update, delete on
+  public.sites, public.managers, public.manager_jobs, public.promos, public.promo_sends, public.sales_settings
+  to authenticated;
+
 -- 공개 기능 (로그인 없이 쓰는 3가지, 꼭 필요한 일만 함) --------------------
 
 -- (가) 홍보물 보기: 공개된 홍보물 1건과 조회수 +1
