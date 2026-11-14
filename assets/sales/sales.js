@@ -556,8 +556,9 @@ function drawSend() {
   $$('#x-text').oninput = (e) => { S.text = e.target.value; drawPrev(); };
   const go = async (test) => {
     const msg = $$('#x-msg');
-    if (!S.text.trim()) { msg.textContent = '문구를 적어 주세요.'; return; }
-    if (!test && !S.ids.size) { msg.textContent = '받는 분을 골라 주세요.'; return; }
+    const warn = (t) => modal(`<h3>${t}</h3><button class="btn btn-primary" data-close>확인</button>`);
+    if (!S.text.trim()) return warn('3번 "문구 쓰기"에 보낼 내용을 먼저 적어 주세요.');
+    if (!test && !S.ids.size) return warn('2번에서 받는 분을 골라 주세요.');
     const run = async () => {
       closeModal();
       $$('#x-test').disabled = true; $$('#x-go').disabled = true; msg.textContent = '보내고 있습니다...';
