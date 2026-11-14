@@ -26,6 +26,14 @@
   - **Vercel 설정 필요**: `GOOGLE_TTS_API_KEY` (구글 클라우드 API 키, Text-to-Speech API만 쓰도록 제한 권장)
 - 만든 결과는 저장되지 않음(영상 저장·글 복사 후 새로 시작)
 
+## 영업·홍보 (관리자 → "영업·홍보" 탭) — 마하파킹 ERP 1단계
+- 관리소장(사람) · 단지(거래처) · 근무 이력 · 홍보물 · 보내기 · 보낸 기록 · 설정
+- 명함 사진 → 자동 입력 (`api/card-scan.js`, 현장샷과 같은 `ANTHROPIC_API_KEY` 사용)
+- 홍보 문자 발송 (`api/promo-send.js`, 솔라피): 수신 동의한 분만 · "(광고)" 표시와 수신거부 안내 자동 · 밤 9시~아침 8시 발송 막힘
+- 관리소장님 전용 공개 페이지 `/m/` : 홍보물 보기(`/m/?p=…`), 소식 받기 신청(수신 동의), 수신거부(`/m/?stop`), 점검표 PDF(`assets/docs/checklist.pdf`)
+- **처음 한 번**: Supabase → SQL Editor 에서 `supabase/sales.sql` 실행
+- **문자 발송 설정**: Vercel 환경변수 `SOLAPI_API_KEY`, `SOLAPI_API_SECRET` 추가 후 Redeploy (그 전에는 "폰 문자앱으로 보내기" 사용)
+
 ## 다음 단계 (예정)
 - 견적서 이메일 자동 발송 (하이웍스 메일 + 발송 서비스 연결)
 - 지금은 견적서를 "PDF 저장 · 인쇄"로 저장한 뒤 "고객에게 메일 쓰기"로 직접 보냅니다.

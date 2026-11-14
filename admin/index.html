@@ -81,6 +81,40 @@
 .shot-voice{display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap}
 .shot-voice label.f{flex:1 1 180px}
 .shot-voice .btn{min-height:44px}
+/* 영업·홍보 */
+.sl-subs{display:flex;gap:4px;flex-wrap:wrap;border-bottom:2px solid var(--line);margin:14px 0 16px}
+.sl-subs button{border:0;background:none;padding:10px 14px;font-weight:700;font-size:15px;color:var(--muted);cursor:pointer;border-bottom:3px solid transparent;margin-bottom:-2px;display:inline-flex;gap:6px;align-items:center}
+.sl-subs button[aria-selected="true"]{color:var(--brand);border-bottom-color:var(--brand)}
+.sl-kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin:6px 0 14px}
+.sl-kpis div{border:1px solid var(--line);border-radius:10px;padding:8px 12px;background:#F7F9FB}
+.sl-kpis span{display:block;font-size:12.5px;color:var(--muted)}
+.sl-kpis b{font-size:20px}
+.sl-list{display:grid;grid-template-columns:repeat(auto-fill,minmax(290px,1fr));gap:10px}
+.sl-plist{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px;margin-top:16px}
+.sl-card{border:1px solid var(--line);border-radius:12px;padding:12px 14px;background:#fff;display:grid;gap:6px;align-content:start}
+.sl-card-h{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+.sl-card-h b{font-size:16.5px}
+.sl-line{font-size:14.5px}
+.sl-line a{color:var(--brand);font-weight:700;text-decoration:none}
+.sl-btns{display:flex;gap:6px;flex-wrap:wrap;margin-top:4px}
+.sl-worked{background:#FFF3D6;color:#8A5A00}
+.sl-media{aspect-ratio:4/3;background:#0B2540;border-radius:10px;overflow:hidden;display:grid;place-items:center}
+.sl-media img,.sl-media video{width:100%;height:100%;object-fit:contain;display:block}
+.sl-box{border:1px solid var(--line);border-radius:12px;padding:14px 16px;background:#F7F9FB;display:grid;gap:10px;margin-top:10px}
+.sl-box summary{cursor:pointer}
+.sl-chk{display:flex;gap:8px;align-items:center;font-size:14.5px;cursor:pointer}
+.sl-chk input{width:20px;height:20px;flex:none;margin:0}
+.sl-consent{display:flex;gap:10px;align-items:center;flex-wrap:wrap;border:2px solid #CFE3D6;background:#F1FAF4;border-radius:10px;padding:10px 12px}
+.sl-hist{list-style:none;margin:6px 0 0;padding:0;display:grid;gap:6px}
+.sl-hist li{display:flex;justify-content:space-between;gap:10px;align-items:center;border:1px solid var(--line);border-radius:8px;padding:8px 10px;font-size:14px;flex-wrap:wrap}
+.sl-step{border:1px solid var(--line);border-radius:12px;padding:14px 16px;margin-bottom:12px;background:#fff;display:grid;gap:6px}
+.sl-step > b{font-size:16px;display:flex;gap:8px;align-items:center}
+.sl-no{display:inline-grid;place-items:center;width:26px;height:26px;border-radius:50%;background:var(--brand);color:#fff;font-size:14px}
+.sl-pick{max-height:320px;overflow:auto;border:1px solid var(--line);border-radius:10px;padding:8px 10px;display:grid;gap:8px;background:#F7F9FB}
+.sl-phone{background:#E9EEF3;border-radius:14px;padding:14px;max-width:380px}
+.sl-bubble{background:#fff;border-radius:12px;padding:12px 14px;white-space:pre-wrap;font-size:14px;line-height:1.6;word-break:break-all}
+.sl-chan{display:flex;gap:16px;flex-wrap:wrap}
+@media (max-width:600px){.sl-kpis{grid-template-columns:repeat(2,1fr)}.sl-list,.sl-plist{grid-template-columns:1fr}.sl-subs button{padding:9px 10px;font-size:14px}}
 </style>
 </head>
 <body>
@@ -108,6 +142,7 @@
     <div class="tabs" role="tablist" id="admin-tabs">
       <button role="tab" data-tab="requests">견적 요청함 <span class="badge" id="new-badge"></span></button>
       <button role="tab" data-tab="quote">견적서 작성</button>
+      <button role="tab" data-tab="sales">영업·홍보</button>
       <button role="tab" data-tab="caseup">시공사례 올리기</button>
       <button role="tab" data-tab="shot">현장샷 (쇼츠·블로그)</button>
       <button role="tab" data-tab="prices">견적 항목 관리</button>
@@ -187,6 +222,12 @@
       <div class="tbl-wrap"><table><thead><tr><th>견적번호</th><th>견적일</th><th>고객</th><th>받는 이메일</th><th class="num">합계</th><th>상태</th><th></th></tr></thead><tbody id="sent-body"></tbody></table></div>
     </div>
 
+    <!-- 영업·홍보: 관리소장 · 단지 · 홍보물 · 보내기 (assets/sales/sales.js, 표: supabase/sales.sql) -->
+    <div class="card panel hidden" data-panel="sales">
+      <h2>영업·홍보</h2>
+      <div id="sales-root"></div>
+    </div>
+
     <!-- 시공사례 올리기 -->
     <div class="card panel hidden" data-panel="caseup">
       <h2>시공사례 올리기</h2>
@@ -260,5 +301,6 @@
 <script src="/assets/common.js"></script>
 <script src="/assets/admin.js"></script>
 <script type="module" src="/assets/shot/hyunjangshot.js"></script>
+<script type="module" src="/assets/sales/sales.js"></script>
 </body>
 </html>

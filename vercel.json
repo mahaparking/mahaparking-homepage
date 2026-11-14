@@ -29,6 +29,12 @@
     },
     "api/hyunjangshot-tts.js": {
       "maxDuration": 30
+    },
+    "api/promo-send.js": {
+      "maxDuration": 60
+    },
+    "api/card-scan.js": {
+      "maxDuration": 30
     }
   }
 }
