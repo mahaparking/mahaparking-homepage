@@ -147,11 +147,11 @@ function drawManagers() {
     });
     root.querySelector('#m-list').innerHTML = list.length ? list.map((m) => `
       <div class="sl-card">
-        <div class="sl-card-h"><b>${esc(m.name)}</b><span class="hint">${esc(m.title || '')}</span>
+        <div class="sl-co">${curSiteText(m.id) ? `🏢 <b>${esc(curSiteText(m.id))}</b>` : '<span class="hint">🏢 근무지 미등록</span>'}${[...new Set(mgrKinds(m.id))].map((k) => ` <span class="status sl-kind">${k}</span>`).join('')}</div>
+        <div class="sl-card-h"><b class="sl-person">${esc(m.name)}</b><span class="hint">${esc(m.title || '')}</span>
           ${m.opt_out ? '<span class="status st-new">수신거부</span>' : m.consent ? '<span class="status st-sent">수신 동의</span>' : '<span class="status st-quote">동의 전</span>'}
           ${m.worked_with ? '<span class="status sl-worked">함께 일함</span>' : ''}
           ${m.source === 'web' ? `<span class="status ${V.webSeen && m.created_at > V.webSeen ? 'st-new">새 신청' : 'st-quote">홈페이지 신청'}</span>` : ''}</div>
-        <div class="sl-line">🏢 ${esc(curSiteText(m.id) || '근무지 미등록')}${[...new Set(mgrKinds(m.id))].map((k) => ` <span class="status sl-kind">${k}</span>`).join('')}</div>
         <div class="sl-line">${m.mobile ? `📱 <a href="tel:${digits(m.mobile)}">${esc(tel(m.mobile))}</a>` : '<span class="hint">휴대폰 없음</span>'}</div>
         <div class="sl-btns"><button class="btn btn-line btn-sm" type="button" data-open="${m.id}">자세히 · 수정</button><button class="btn btn-line btn-sm" type="button" data-move="${m.id}">근무지 변경</button><button class="btn btn-danger btn-sm" type="button" data-mdel="${m.id}">삭제</button></div>
       </div>`).join('') : '<p class="empty">해당하는 담당자가 없습니다. 명함을 찍어 등록해 보세요.</p>';
