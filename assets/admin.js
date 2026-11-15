@@ -127,9 +127,18 @@
       return '<tr><td style="white-space:nowrap">' + dot(r.created_at) + '</td><td>' + esc(r.kind) + '</td><td><b>' + esc(r.name || '(이름 없음)') + '</b><br><span class="hint">' + esc([r.phone, r.email, r.area].filter(Boolean).join(' · ')) + '</span></td>' +
         '<td style="max-width:340px">' + (items ? '<b>' + esc(items) + '</b><br>' : '') + '<span class="hint">' + esc(r.memo) + '</span>' + (r.photos && r.photos.length ? '<div class="req-photos" data-rp="' + r.id + '"><button class="mini" type="button" data-showp="' + r.id + '">사진 ' + r.photos.length + '장 보기</button></div>' : '') + '</td>' +
         '<td><select data-st="' + r.id + '" aria-label="상태" style="width:auto;padding:5px 8px;font-size:13px">' + Object.keys(ST).map(function (k) { return '<option value="' + k + '"' + (k === r.status ? ' selected' : '') + '>' + ST[k][0] + '</option>'; }).join('') + '</select></td>' +
-        '<td style="white-space:nowrap"><button class="btn btn-primary btn-sm" data-mk="' + r.id + '">견적서 만들기</button> <button class="row-del" data-rdel="' + r.id + '" aria-label="요청 삭제">×</button></td></tr>';
+        '<td style="white-space:nowrap"><button class="btn btn-primary btn-sm" data-mk="' + r.id + '">견적서 만들기</button> <button class="btn btn-line btn-sm" data-mkw="' + r.id + '">작업 등록</button> <button class="row-del" data-rdel="' + r.id + '" aria-label="요청 삭제">×</button></td></tr>';
     }).join('') : '<tr><td colspan="6" class="hint">아직 들어온 요청이 없습니다.</td></tr>';
     [].forEach.call($('req-body').querySelectorAll('[data-mk]'), function (b) { b.onclick = function () { startQuote(b.dataset.mk); }; });
+    [].forEach.call($('req-body').querySelectorAll('[data-mkw]'), function (b) {
+      b.onclick = function () {
+        var r = D.requests.filter(function (x) { return x.id === b.dataset.mkw; })[0]; if (!r || !window.mahaNewWork) return;
+        var q = D.quotes.filter(function (x) { return x.request_id === r.id; })[0];
+        var items = (r.items || []).map(function (it) { return it.name; }).filter(Boolean).join(', ');
+        window.mahaNewWork({ title: items || (r.memo || '').split('\n')[0].slice(0, 40) || r.kind, site_name: r.name || '', phone: r.phone || '', address: r.area || '', request_id: r.id,
+          quote_id: q ? q.id : null, supply: q ? q.supply : 0, vat: q ? q.vat : 0, work_date: '', memo: r.memo || '' });
+      };
+    });
     [].forEach.call($('req-body').querySelectorAll('[data-st]'), function (el) {
       el.onchange = function () {
         var r = D.requests.filter(function (x) { return x.id === el.dataset.st; })[0];
