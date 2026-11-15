@@ -14,6 +14,7 @@ const MAX_PHOTOS = 12;
 const STAGE = { before: '작업 전', during: '작업 중', after: '작업 후' };
 
 const SYSTEM = `당신은 주차장비 유지보수·업싸이클링 업체 "마하파킹"의 홍보 담당입니다.
+결과는 반드시 deliver 도구를 한 번 호출해서 전달합니다.
 대표님이 현장에서 찍은 사진과 짧은 작업 메모를 받아, 쇼츠 자막과 네이버 블로그 시공사례 글의 재료를 씁니다.
 
 [가장 중요한 규칙]
@@ -30,6 +31,11 @@ const SYSTEM = `당신은 주차장비 유지보수·업싸이클링 업체 "마
   흐름: 문제 → 확인·점검 → 작업 → 결과. 마지막 장면은 마무리 느낌으로. 말투는 짧고 힘 있게.
   narration: 그 장면에서 남성 성우가 읽을 내레이션 한 문장. 자막과 같은 뜻을 자연스러운 말로, 띄어쓰기 포함 14~30자, 존댓말("~습니다", "~했죠").
   내레이션에는 별표·괄호·기호를 쓰지 않고, 숫자·영문 약어는 읽는 소리대로 한글로 씁니다 (LED → 엘이디, 3m → 삼 미터).
+
+[홈페이지 시공사례] 홈페이지 시공사례 카드에 올릴 짧은 글입니다.
+- title: 현장 종류 + 작업을 담은 명사형 제목, 띄어쓰기 포함 25자 이내 (예: "공영주차장 양면 LED 차단바 교체"). 단지·건물 이름은 쓰지 않습니다.
+- description: 어떤 문제가 있었고 어떻게 해결했는지 두세 문장, 존댓말("~했습니다").
+- result: 카드 아래 굵게 들어갈 결과 한 줄, 띄어쓰기 포함 20자 이내 (예: "당일 출동 · 당일 복구"). 메모에 없는 시간·숫자는 쓰지 않습니다.
 
 [블로그] 마하파킹 블로그 고정 구성의 재료만 씁니다. (회사 소개·약속·문의 안내는 프로그램이 자동으로 붙이므로 쓰지 않습니다)
 - title: 고객 상황을 묻는 의문문 제목 (예: "배달 중 오토바이에 주차차단바가 부러졌다면, 어떻게 해야 할까요?")
@@ -48,7 +54,7 @@ const TOOL = {
   description: '쇼츠 자막과 블로그 글 재료를 전달합니다.',
   input_schema: {
     type: 'object',
-    required: ['shorts', 'blog', 'checks'],
+    required: ['shorts', 'case', 'blog', 'checks'],
     properties: {
       shorts: {
         type: 'object',
@@ -86,6 +92,11 @@ const TOOL = {
           keywords_ext: { type: 'array', items: { type: 'string' } },
           hashtags: { type: 'array', items: { type: 'string' } },
         },
+      },
+      case: {
+        type: 'object',
+        required: ['title', 'description', 'result'],
+        properties: { title: { type: 'string' }, description: { type: 'string' }, result: { type: 'string' } },
       },
       checks: { type: 'array', items: { type: 'string' }, description: '대표님이 확인해야 할 점 (없으면 빈 배열)' },
     },
@@ -136,7 +147,7 @@ module.exports = async (req, res) => {
         max_tokens: 8000,
         system: SYSTEM,
         tools: [TOOL],
-        tool_choice: { type: 'tool', name: 'deliver' },
+        tool_choice: { type: 'auto' },  // 일부 모델은 특정 도구 강제를 지원하지 않음 (SYSTEM 에서 deliver 호출을 지시)
         messages: [{ role: 'user', content }],
       }),
     });
@@ -149,6 +160,13 @@ module.exports = async (req, res) => {
     return send(res, 502, { error: msg });
   }
   const use = (data.content || []).find((c) => c.type === 'tool_use');
-  if (!use) return send(res, 502, { error: 'AI 응답을 읽지 못했습니다. 다시 시도해 주세요.' });
-  return send(res, 200, { result: use.input, usage: data.usage || null });
+  let result = use ? use.input : null;
+  if (!result) {
+    // 도구를 부르지 않고 글로 답한 경우: 글 속 JSON 꺼내기
+    const text = (data.content || []).filter((c) => c.type === 'text').map((c) => c.text).join('\n');
+    const m = text.match(/\{[\s\S]*\}/);
+    if (m) { try { result = JSON.parse(m[0]); } catch (e) { result = null; } }
+  }
+  if (!result || !result.shorts || !result.blog) return send(res, 502, { error: 'AI 응답을 읽지 못했습니다. 다시 시도해 주세요.' });
+  return send(res, 200, { result, usage: data.usage || null });
 };

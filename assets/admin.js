@@ -57,7 +57,7 @@
     $('new-badge').textContent = n || ''; $('new-badge').classList.toggle('hidden', !n);
     if (tab === 'requests') drawRequests();
     if (tab === 'quote') drawQuote();
-    if (tab === 'caseup') drawCaseAdmin();
+    if (tab === 'caseup' || tab === 'shot') drawCaseAdmin();
     if (tab === 'prices') drawPrices();
     if (tab === 'stats') drawStats();
     if (tab === 'market') drawMarket();
@@ -486,6 +486,10 @@
       });
     };
   }
+  /* 현장 기록(hyunjangshot.js)에서 시공사례를 올린 뒤 목록 새로고침 */
+  window.mahaReloadCases = function () {
+    sb.from('cases').select('*').order('work_date', { ascending: false, nullsFirst: false }).order('created_at', { ascending: false }).then(function (r) { if (!r.error) { D.cases = r.data || []; drawCaseAdmin(); } });
+  };
   function drawCaseAdmin() {
     $('case-body').innerHTML = D.cases.length ? D.cases.map(function (c) {
       return '<tr><td>' + dot(c.work_date) + '</td><td><b>' + esc(c.title) + '</b></td><td>' + esc(c.area) + '</td><td>' + esc(c.work_type) + '</td><td>' + (c.photos ? c.photos.length : 0) + '장</td>' +
