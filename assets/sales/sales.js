@@ -153,10 +153,11 @@ function drawManagers() {
           ${m.source === 'web' ? `<span class="status ${V.webSeen && m.created_at > V.webSeen ? 'st-new">새 신청' : 'st-quote">홈페이지 신청'}</span>` : ''}</div>
         <div class="sl-line">🏢 ${esc(curSiteText(m.id) || '근무지 미등록')}${[...new Set(mgrKinds(m.id))].map((k) => ` <span class="status sl-kind">${k}</span>`).join('')}</div>
         <div class="sl-line">${m.mobile ? `📱 <a href="tel:${digits(m.mobile)}">${esc(tel(m.mobile))}</a>` : '<span class="hint">휴대폰 없음</span>'}</div>
-        <div class="sl-btns"><button class="btn btn-line btn-sm" type="button" data-open="${m.id}">자세히 · 수정</button><button class="btn btn-line btn-sm" type="button" data-move="${m.id}">근무지 변경</button></div>
+        <div class="sl-btns"><button class="btn btn-line btn-sm" type="button" data-open="${m.id}">자세히 · 수정</button><button class="btn btn-line btn-sm" type="button" data-move="${m.id}">근무지 변경</button><button class="btn btn-danger btn-sm" type="button" data-mdel="${m.id}">삭제</button></div>
       </div>`).join('') : '<p class="empty">해당하는 담당자가 없습니다. 명함을 찍어 등록해 보세요.</p>';
     root.querySelectorAll('[data-open]').forEach((b) => { b.onclick = () => managerModal(byId(D.managers, b.dataset.open)); });
     root.querySelectorAll('[data-move]').forEach((b) => { b.onclick = () => moveModal(byId(D.managers, b.dataset.move)); });
+    root.querySelectorAll('[data-mdel]').forEach((b) => { b.onclick = () => deleteManager(byId(D.managers, b.dataset.mdel)); });
   };
   root.querySelector('#m-q').oninput = (e) => { V.mq = e.target.value; draw(); };
   root.querySelector('#m-f').onchange = (e) => { V.mf = e.target.value; draw(); };
@@ -274,18 +275,20 @@ function managerModal(m, pre) {
   };
   if (m) {
     g('mm-move').onclick = () => moveModal(m);
-    g('mm-del').onclick = () => {
-      modal(`<h3>${esc(m.name)} 님을 삭제할까요?</h3><p>근무 이력도 함께 지워집니다. 되돌릴 수 없습니다.</p><div class="btns"><button class="btn btn-danger" id="mm-del2">삭제</button><button class="btn btn-line" data-close>취소</button></div>`);
-      g('mm-del2').onclick = async () => {
-        try {
-          if (m.card_path) await sb.storage.from('cards').remove([m.card_path]);
-          await q(sb.from('managers').delete().eq('id', m.id), '삭제하지 못했습니다.');
-          D.managers = D.managers.filter((y) => y.id !== m.id); D.jobs = D.jobs.filter((j) => j.manager_id !== m.id);
-          closeModal(); mount();
-        } catch (e) { oops(e.userMsg || '삭제하지 못했습니다.', e); }
-      };
-    };
+    g('mm-del').onclick = () => deleteManager(m);
   }
+}
+
+function deleteManager(m) {
+  modal(`<h3>${esc(m.name)} 님을 삭제할까요?</h3><p>연락처·명함 사진·근무 이력이 함께 지워집니다. 되돌릴 수 없습니다.</p><div class="btns"><button class="btn btn-danger" id="mm-del2">삭제</button><button class="btn btn-line" data-close>취소</button></div>`);
+  document.getElementById('mm-del2').onclick = async () => {
+    try {
+      if (m.card_path) await sb.storage.from('cards').remove([m.card_path]);
+      await q(sb.from('managers').delete().eq('id', m.id), '삭제하지 못했습니다.');
+      D.managers = D.managers.filter((y) => y.id !== m.id); D.jobs = D.jobs.filter((j) => j.manager_id !== m.id);
+      closeModal(); mount();
+    } catch (e) { oops(e.userMsg || '삭제하지 못했습니다.', e); }
+  };
 }
 
 /** 단지 찾기 또는 새로 만들기 (새 단지는 영업 대상) */
@@ -370,10 +373,11 @@ function drawSites() {
         <div class="sl-card-h"><b>${esc(s.name)}</b><span class="status sl-kind">${kindOf(s.kind)}</span><span class="status ${st[1]}">${st[0]}</span>${s.need_new_manager ? '<span class="status st-new">새 담당자 확인</span>' : ''}${s.region ? `<span class="hint">${esc(s.region)}</span>` : ''}</div>
         <div class="sl-line">👤 ${ms.length ? ms.map((m) => `${esc(m.name)} ${esc(m.title || '')}`).join(', ') : '<span class="hint">담당자 미등록</span>'}</div>
         <div class="sl-line">${s.office_tel ? `☎ <a href="tel:${digits(s.office_tel)}">${esc(tel(s.office_tel))}</a>` : ''}${s.office_fax ? ` <span class="hint">팩스 ${esc(tel(s.office_fax))}</span>` : ''}${s.households ? ` <span class="hint">· ${s.households}세대</span>` : ''}</div>
-        <div class="sl-btns"><button class="btn btn-line btn-sm" type="button" data-sopen="${s.id}">자세히 · 수정</button></div>
+        <div class="sl-btns"><button class="btn btn-line btn-sm" type="button" data-sopen="${s.id}">자세히 · 수정</button><button class="btn btn-danger btn-sm" type="button" data-sdel="${s.id}">삭제</button></div>
       </div>`;
     }).join('') : '<p class="empty">해당하는 곳이 없습니다.</p>';
     root.querySelectorAll('[data-sopen]').forEach((b) => { b.onclick = () => siteModal(byId(D.sites, b.dataset.sopen)); });
+    root.querySelectorAll('[data-sdel]').forEach((b) => { b.onclick = () => deleteSite(byId(D.sites, b.dataset.sdel)); });
   };
   root.querySelector('#s-q').oninput = (e) => { V.sq = e.target.value; draw(); };
   root.querySelector('#s-f').onchange = (e) => { V.sf = e.target.value; draw(); };
@@ -416,15 +420,17 @@ function siteModal(s) {
       closeModal(); mount();
     } catch (e) { g('ss-save').disabled = false; oops(e.userMsg || '저장하지 못했습니다.', e); }
   };
-  if (s) g('ss-del').onclick = () => {
-    modal(`<h3>${esc(s.name)}을(를) 삭제할까요?</h3><p>담당자 정보는 남고, 근무 이력에는 이름만 남습니다.</p><div class="btns"><button class="btn btn-danger" id="ss-del2">삭제</button><button class="btn btn-line" data-close>취소</button></div>`);
-    g('ss-del2').onclick = async () => {
-      try {
-        await q(sb.from('sites').delete().eq('id', s.id), '삭제하지 못했습니다.');
-        D.sites = D.sites.filter((y) => y.id !== s.id); D.jobs.forEach((j) => { if (j.site_id === s.id) j.site_id = null; });
-        closeModal(); mount();
-      } catch (e) { oops(e.userMsg || '삭제하지 못했습니다.', e); }
-    };
+  if (s) g('ss-del').onclick = () => deleteSite(s);
+}
+
+function deleteSite(s) {
+  modal(`<h3>${esc(s.name)}을(를) 삭제할까요?</h3><p>담당자 정보는 남고, 근무 이력에는 이름만 남습니다.</p><div class="btns"><button class="btn btn-danger" id="ss-del2">삭제</button><button class="btn btn-line" data-close>취소</button></div>`);
+  document.getElementById('ss-del2').onclick = async () => {
+    try {
+      await q(sb.from('sites').delete().eq('id', s.id), '삭제하지 못했습니다.');
+      D.sites = D.sites.filter((y) => y.id !== s.id); D.jobs.forEach((j) => { if (j.site_id === s.id) j.site_id = null; });
+      closeModal(); mount();
+    } catch (e) { oops(e.userMsg || '삭제하지 못했습니다.', e); }
   };
 }
 
