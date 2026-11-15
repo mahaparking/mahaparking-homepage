@@ -504,14 +504,40 @@
       }).catch(function (err) { btn.disabled = false; $('ord-msg').textContent = '저장하지 못했습니다. ' + (err && err.message || ''); });
     };
   }
+  /* 올린 시공사례의 글(제목·지역·작업 종류·작업일·설명·결과) 고치기 */
+  function editCaseText(c) {
+    var types = CASE_TYPES.indexOf(c.work_type) >= 0 ? CASE_TYPES : CASE_TYPES.concat([c.work_type]);
+    modal('<h3>시공사례 글 수정</h3>' +
+      '<label class="f">제목<input id="ec-title" value="' + esc(c.title || '') + '"></label>' +
+      '<div class="row3"><label class="f">지역<input id="ec-area" value="' + esc(c.area || '') + '"></label>' +
+      '<label class="f">작업 종류<select id="ec-type">' + types.map(function (t) { return '<option' + (t === c.work_type ? ' selected' : '') + '>' + esc(t) + '</option>'; }).join('') + '</select></label>' +
+      '<label class="f">작업일<input id="ec-date" type="date" value="' + esc(c.work_date || '') + '"></label></div>' +
+      '<label class="f">짧은 설명<textarea id="ec-desc">' + esc(c.description || '') + '</textarea></label>' +
+      '<label class="f">결과 한 줄<input id="ec-result" value="' + esc(c.result || '') + '"></label>' +
+      '<div class="btns"><button class="btn btn-primary" id="ec-save">저장</button><button class="btn btn-line" data-close>취소</button></div><p class="hint" id="ec-msg"></p>');
+    $('ec-save').onclick = function () {
+      var patch = { title: $('ec-title').value.trim(), area: $('ec-area').value.trim(), work_type: $('ec-type').value, work_date: $('ec-date').value || null, description: $('ec-desc').value.trim(), result: $('ec-result').value.trim() };
+      if (!patch.title) { $('ec-msg').textContent = '제목을 적어 주세요.'; return; }
+      $('ec-save').disabled = true;
+      sb.from('cases').update(patch).eq('id', c.id).then(function (r) {
+        if (r.error) { $('ec-save').disabled = false; return fail('저장하지 못했습니다.', r.error); }
+        Object.keys(patch).forEach(function (k) { c[k] = patch[k]; });
+        closeModal(); drawCaseAdmin();
+      });
+    };
+  }
+
   function drawCaseAdmin() {
     $('case-body').innerHTML = D.cases.length ? D.cases.map(function (c) {
       return '<tr><td>' + dot(c.work_date) + '</td><td><b>' + esc(c.title) + '</b></td><td>' + esc(c.area) + '</td><td>' + esc(c.work_type) + '</td><td>' + (c.photos ? c.photos.length : 0) + '장</td>' +
         '<td style="text-align:center"><input type="checkbox" data-pub="' + c.id + '"' + (c.published ? ' checked' : '') + ' aria-label="홈페이지 공개" style="width:18px;height:18px"></td>' +
-        '<td style="white-space:nowrap">' + (c.photos && c.photos.length ? '<button class="btn btn-line btn-sm" data-ordc="' + c.id + '">사진 순서 · 대표 · 편집</button> ' : '') + '<button class="btn btn-danger btn-sm" data-delc="' + c.id + '">삭제</button></td></tr>';
+        '<td style="white-space:nowrap"><button class="btn btn-line btn-sm" data-editc="' + c.id + '">글 수정</button> ' + (c.photos && c.photos.length ? '<button class="btn btn-line btn-sm" data-ordc="' + c.id + '">사진 순서 · 대표 · 편집</button> ' : '') + '<button class="btn btn-danger btn-sm" data-delc="' + c.id + '">삭제</button></td></tr>';
     }).join('') : '<tr><td colspan="7" class="hint">아직 올린 시공사례가 없습니다.</td></tr>';
     [].forEach.call($('case-body').querySelectorAll('[data-pub]'), function (el) {
       el.onchange = function () { var c = D.cases.filter(function (x) { return x.id === el.dataset.pub; })[0]; sb.from('cases').update({ published: el.checked }).eq('id', c.id).then(function (r) { if (r.error) { el.checked = !el.checked; return fail('공개 설정을 바꾸지 못했습니다.', r.error); } c.published = el.checked; }); };
+    });
+    [].forEach.call($('case-body').querySelectorAll('[data-editc]'), function (b) {
+      b.onclick = function () { editCaseText(D.cases.filter(function (x) { return x.id === b.dataset.editc; })[0]); };
     });
     [].forEach.call($('case-body').querySelectorAll('[data-ordc]'), function (b) {
       b.onclick = function () { editCasePhotos(D.cases.filter(function (x) { return x.id === b.dataset.ordc; })[0]); };
