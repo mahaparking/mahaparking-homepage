@@ -11,10 +11,32 @@
 <link href="https://fonts.googleapis.com/css2?family=Gothic+A1:wght@500;700;800;900&family=Noto+Sans+KR:wght@400;500;700;900&family=Black+Han+Sans&family=Do+Hyeon&family=Jua&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/assets/site.css">
 <style>
-.tab-groups{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:10px}
-.tab-group{display:flex;flex-wrap:wrap;gap:6px;align-items:center;align-content:flex-start;border:1px solid var(--line);border-radius:12px;padding:10px 12px;background:#fff}
-.tab-group-name{width:100%;font-size:12.5px;font-weight:700;color:var(--muted);letter-spacing:.02em}
-.tab-group button{padding:8px 13px;font-size:14.5px}
+/* 메뉴: PC 왼쪽 메뉴 · 휴대폰 ☰ 메뉴 */
+.adm-layout{display:grid;grid-template-columns:230px minmax(0,1fr);gap:22px;align-items:start;margin-top:22px}
+.adm-side{position:sticky;top:12px;background:#fff;border:1px solid var(--line);border-radius:14px;padding:8px}
+.adm-menu-btn{display:none}
+.adm-grp + .adm-grp{border-top:1px solid #E6ECF2}
+.adm-grp-h{display:flex;justify-content:space-between;align-items:center;padding:12px 10px;font-weight:800;font-size:15.5px;cursor:pointer;border-radius:10px;user-select:none}
+.adm-grp-h:hover{background:#F2F6FA}
+.adm-grp-h i{font-style:normal;color:var(--muted);transition:transform .15s}
+.adm-grp.open .adm-grp-h i{transform:rotate(180deg)}
+.adm-grp-items{display:none;padding:0 0 8px 8px}
+.adm-grp.open .adm-grp-items{display:grid;gap:2px}
+.adm-grp-items button{display:flex;align-items:center;gap:6px;width:100%;text-align:left;border:0;background:none;border-radius:9px;padding:10px 12px;font:inherit;font-size:15px;font-weight:700;color:var(--ink);cursor:pointer}
+.adm-grp-items button:hover{background:#F2F6FA;color:var(--brand)}
+.adm-grp-items button[aria-selected="true"]{background:var(--navy);color:#fff}
+.adm-grp-items .badge{margin-left:auto}
+.adm-grp-h.has-new span::after{content:"";display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--stop);margin-left:6px;vertical-align:middle}
+.adm-main > .panel{margin-top:0}
+@media (max-width:860px){
+  .adm-layout{grid-template-columns:minmax(0,1fr);gap:12px;margin-top:12px}
+  .adm-side{position:sticky;top:0;z-index:15;padding:6px}
+  .adm-menu-btn{display:flex;gap:8px;align-items:center;width:100%;border:0;background:none;font:inherit;font-weight:800;font-size:16px;padding:10px;cursor:pointer;color:var(--ink)}
+  .adm-menu-btn b{margin-left:auto;color:var(--brand);font-weight:800}
+  .adm-burger{font-size:20px}
+  .adm-nav{display:none;max-height:70vh;overflow:auto;border-top:1px solid var(--line);margin-top:4px}
+  .adm-side.show .adm-nav{display:block}
+}
 .login{min-height:calc(100vh - 92px);display:grid;place-items:center;padding:24px;background:var(--navy)}
 .login .form{width:100%;max-width:380px}
 .req-photos{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px}
@@ -157,24 +179,41 @@
 <div id="view-admin" class="hidden">
   <div class="admin-bar"><div class="wrap" style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;align-items:center"><span><b>마하파킹 관리자</b> · <span id="who"></span></span><span style="display:flex;gap:8px"><a class="btn btn-line btn-sm" href="/" target="_blank" rel="noopener">홈페이지 보기</a><button class="btn btn-line btn-sm" id="logout">로그아웃</button></span></div></div>
   <div class="wrap">
-    <div class="tabs tab-groups" role="tablist" id="admin-tabs">
-      <div class="tab-group"><span class="tab-group-name">홍보</span>
-        <button role="tab" data-tab="sales">영업·홍보</button>
-        <button role="tab" data-tab="caseup">시공사례</button>
-        <button role="tab" data-tab="shot">현장샷 (쇼츠·블로그)</button>
-      </div>
-      <div class="tab-group"><span class="tab-group-name">견적서</span>
-        <button role="tab" data-tab="requests">견적 요청함 <span class="badge" id="new-badge"></span></button>
-        <button role="tab" data-tab="quote">견적서 작성</button>
-        <button role="tab" data-tab="prices">견적 항목 관리</button>
-      </div>
-      <div class="tab-group"><span class="tab-group-name">홈페이지 관리</span>
-        <button role="tab" data-tab="stats">방문 통계</button>
-      </div>
-      <div class="tab-group"><span class="tab-group-name">영업 정보</span>
-        <button role="tab" data-tab="market">시장 동향 <span class="badge hidden" id="mk-badge">N</span></button>
-      </div>
-    </div>
+    <div class="adm-layout">
+    <aside class="adm-side" id="adm-side">
+      <button type="button" class="adm-menu-btn" id="adm-menu-btn" aria-expanded="false" aria-controls="admin-tabs"><span class="adm-burger" aria-hidden="true">☰</span> 메뉴 <b id="adm-cur"></b></button>
+      <nav class="adm-nav" role="tablist" id="admin-tabs" aria-label="관리자 메뉴">
+        <div class="adm-grp">
+          <div class="adm-grp-h" role="button" tabindex="0" aria-expanded="false"><span>📣 홍보</span><i aria-hidden="true">▾</i></div>
+          <div class="adm-grp-items">
+            <button role="tab" data-tab="sales">영업·홍보</button>
+            <button role="tab" data-tab="caseup">시공사례</button>
+            <button role="tab" data-tab="shot">현장샷 (쇼츠·블로그)</button>
+          </div>
+        </div>
+        <div class="adm-grp">
+          <div class="adm-grp-h" role="button" tabindex="0" aria-expanded="false"><span>🧾 견적서</span><i aria-hidden="true">▾</i></div>
+          <div class="adm-grp-items">
+            <button role="tab" data-tab="requests">견적 요청함 <span class="badge" id="new-badge"></span></button>
+            <button role="tab" data-tab="quote">견적서 작성</button>
+            <button role="tab" data-tab="prices">견적 항목 관리</button>
+          </div>
+        </div>
+        <div class="adm-grp">
+          <div class="adm-grp-h" role="button" tabindex="0" aria-expanded="false"><span>🌐 홈페이지 관리</span><i aria-hidden="true">▾</i></div>
+          <div class="adm-grp-items">
+            <button role="tab" data-tab="stats">방문 통계</button>
+          </div>
+        </div>
+        <div class="adm-grp">
+          <div class="adm-grp-h" role="button" tabindex="0" aria-expanded="false"><span>📊 영업 정보</span><i aria-hidden="true">▾</i></div>
+          <div class="adm-grp-items">
+            <button role="tab" data-tab="market">시장 동향 <span class="badge hidden" id="mk-badge">N</span></button>
+          </div>
+        </div>
+      </nav>
+    </aside>
+    <div class="adm-main">
 
     <!-- 시장 동향 -->
     <div class="card panel hidden" data-panel="market">
@@ -320,6 +359,8 @@
       <div class="tbl-wrap"><table class="ptable"><thead><tr><th>순서</th><th>구분</th><th>항목 이름</th><th>설명</th><th>단위</th><th class="num">기본 단가(원)</th><th>견적서에 사용</th><th>홈페이지 표시</th><th>길이 입력</th><th></th></tr></thead><tbody id="price-body"></tbody></table></div>
       <p class="hint" style="margin-top:10px">· <b>견적서에 사용</b>을 끄면 견적서 선택 목록에서만 빠지고, 항목 자료는 남아 있어 다시 켤 수 있습니다.<br>· <b>홈페이지 표시</b>를 켜면 고객용 제품 견적 화면에 나옵니다(가격은 보이지 않습니다).<br>· <b>길이 입력</b>을 켜면 고객이 신청할 때 길이(m)를 적는 칸이 생깁니다.</p>
     </div>
+    </div>
+    </div>
   </div>
 </div>
 </main>
@@ -327,6 +368,7 @@
 <script src="/assets/supabase.js"></script>
 <script src="/assets/common.js"></script>
 <script src="/assets/admin.js"></script>
+<script src="/assets/admin-nav.js"></script>
 <script type="module" src="/assets/shot/hyunjangshot.js"></script>
 <script type="module" src="/assets/sales/sales.js"></script>
 </body>
