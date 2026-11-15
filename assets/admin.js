@@ -448,7 +448,7 @@
     $('k-msg').textContent = '사진을 정리하고 있습니다...';
     Promise.all(fs.map(function (f) { return shrinkToBlob(f, 1600); })).then(function (r) { kPhotos = kPhotos.concat(r.filter(Boolean)); drawK(); $('k-msg').textContent = ''; });
   });
-  function drawK() { drawThumbs('k-thumbs', kPhotos, drawK); }
+  function drawK() { drawThumbs('k-thumbs', kPhotos, drawK, null, function (i) { photoEditor(kPhotos[i].url, function (np) { kPhotos[i] = np; drawK(); }); }); }
   /* 현장샷(hyunjangshot.js)에서 "이 사진으로 시공사례 올리기" → 사진·글을 채워서 이 탭 열기
    * d = { title, area, work_type, work_date, description, result, photos: [{ blob, url }] } */
   window.mahaPrefillCase = function (d) {
@@ -479,28 +479,36 @@
     }).catch(function (err) { btn.disabled = false; $('k-msg').textContent = ''; fail('시공사례를 올리지 못했습니다.', err); });
   });
   function casePhotoUrl(p) { return sb.storage.from('case-photos').getPublicUrl(p).data.publicUrl; }
-  function editCasePhotos(c) {
-    var list = c.photos.slice();
-    modal('<h3>사진 순서 · 대표 사진</h3><p class="hint" style="margin:0">' + esc(c.title) + '<br>"대표로"를 누르면 맨 앞(대표 사진)으로 갑니다. ◀ ▶로 순서를 바꾸고, ×로 사진을 뺄 수 있습니다.</p><div class="thumbs" id="ord-thumbs"></div><div class="btns"><button class="btn btn-primary" id="ord-save">저장</button><button class="btn btn-line" data-close>취소</button></div><p class="hint" id="ord-msg" role="status"></p>');
-    var redraw = function () { drawThumbs('ord-thumbs', list, redraw, casePhotoUrl); };
+  function editCasePhotos(c, keep) {
+    var list = keep || c.photos.slice();
+    var urlOf = function (p) { return typeof p === 'string' ? casePhotoUrl(p) : p.url; };
+    modal('<h3>사진 순서 · 대표 사진 · 편집</h3><p class="hint" style="margin:0">' + esc(c.title) + '<br>"대표로"를 누르면 맨 앞(대표 사진)으로 갑니다. ◀ ▶로 순서를 바꾸고, ×로 사진을 뺄 수 있습니다.<br><b>사진을 두 번 누르면</b> 돌리기 · 모자이크 편집 창이 열립니다.</p><div class="thumbs" id="ord-thumbs"></div><div class="btns"><button class="btn btn-primary" id="ord-save">저장</button><button class="btn btn-line" data-close>취소</button></div><p class="hint" id="ord-msg" role="status"></p>');
+    var reopen = function () { editCasePhotos(c, list); };
+    var redraw = function () { drawThumbs('ord-thumbs', list, redraw, urlOf, function (i) { photoEditor(urlOf(list[i]), function (np) { list[i] = np; reopen(); }, reopen); }); };
     redraw();
     $('ord-save').onclick = function () {
-      var btn = this; btn.disabled = true;
-      var removed = c.photos.filter(function (p) { return list.indexOf(p) < 0; });
-      sb.from('cases').update({ photos: list }).eq('id', c.id).select('id,photos').then(function (r) {
-        if (r.error || !r.data || !r.data.length) { btn.disabled = false; $('ord-msg').textContent = '저장하지 못했습니다. ' + (r.error ? r.error.message : '다시 로그인한 뒤 시도해 주세요.'); return; }
-        list = r.data[0].photos;
-        if (removed.length) sb.storage.from('case-photos').remove(removed).then(function () {});
-        c.photos = list.slice(); closeModal(); drawCaseAdmin();
-        modal('<h3>저장했습니다</h3><p>대표 사진과 순서를 바꿨습니다. 홈페이지를 <b>Ctrl + F5</b>로 새로고침하면 바뀐 사진이 나옵니다.</p><button class="btn btn-primary" data-close>확인</button>');
-      });
+      var btn = this; btn.disabled = true; $('ord-msg').textContent = '저장하고 있습니다...';
+      var folder = (c.photos[0] && c.photos[0].indexOf('/') > 0 ? c.photos[0].slice(0, c.photos[0].lastIndexOf('/')) : today().slice(0, 7) + '/' + rid());
+      Promise.all(list.map(function (p, i) {
+        if (typeof p === 'string') return p;
+        var path = folder + '/e' + Date.now().toString(36) + i + '.jpg';
+        return sb.storage.from('case-photos').upload(path, p.blob, { contentType: 'image/jpeg' }).then(function (r) { if (r.error) throw r.error; return path; });
+      })).then(function (paths) {
+        var removed = c.photos.filter(function (p) { return paths.indexOf(p) < 0; });
+        return sb.from('cases').update({ photos: paths }).eq('id', c.id).select('id,photos').then(function (r) {
+          if (r.error || !r.data || !r.data.length) throw (r.error || new Error('다시 로그인한 뒤 시도해 주세요.'));
+          if (removed.length) sb.storage.from('case-photos').remove(removed).then(function () {});
+          c.photos = r.data[0].photos.slice(); closeModal(); drawCaseAdmin();
+          modal('<h3>저장했습니다</h3><p>사진 순서 · 대표 사진 · 편집 내용을 저장했습니다. 홈페이지를 <b>Ctrl + F5</b>로 새로고침하면 바뀐 사진이 나옵니다.</p><button class="btn btn-primary" data-close>확인</button>');
+        });
+      }).catch(function (err) { btn.disabled = false; $('ord-msg').textContent = '저장하지 못했습니다. ' + (err && err.message || ''); });
     };
   }
   function drawCaseAdmin() {
     $('case-body').innerHTML = D.cases.length ? D.cases.map(function (c) {
       return '<tr><td>' + dot(c.work_date) + '</td><td><b>' + esc(c.title) + '</b></td><td>' + esc(c.area) + '</td><td>' + esc(c.work_type) + '</td><td>' + (c.photos ? c.photos.length : 0) + '장</td>' +
         '<td style="text-align:center"><input type="checkbox" data-pub="' + c.id + '"' + (c.published ? ' checked' : '') + ' aria-label="홈페이지 공개" style="width:18px;height:18px"></td>' +
-        '<td style="white-space:nowrap">' + (c.photos && c.photos.length ? '<button class="btn btn-line btn-sm" data-ordc="' + c.id + '">사진 순서 · 대표</button> ' : '') + '<button class="btn btn-danger btn-sm" data-delc="' + c.id + '">삭제</button></td></tr>';
+        '<td style="white-space:nowrap">' + (c.photos && c.photos.length ? '<button class="btn btn-line btn-sm" data-ordc="' + c.id + '">사진 순서 · 대표 · 편집</button> ' : '') + '<button class="btn btn-danger btn-sm" data-delc="' + c.id + '">삭제</button></td></tr>';
     }).join('') : '<tr><td colspan="7" class="hint">아직 올린 시공사례가 없습니다.</td></tr>';
     [].forEach.call($('case-body').querySelectorAll('[data-pub]'), function (el) {
       el.onchange = function () { var c = D.cases.filter(function (x) { return x.id === el.dataset.pub; })[0]; sb.from('cases').update({ published: el.checked }).eq('id', c.id).then(function (r) { if (r.error) { el.checked = !el.checked; return fail('공개 설정을 바꾸지 못했습니다.', r.error); } c.published = el.checked; }); };

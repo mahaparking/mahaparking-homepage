@@ -53,8 +53,8 @@ function shrinkToBlob(file, max) {
   });
 }
 /* 사진 목록: 대표 지정 · 순서 바꾸기 · 빼기 (list 를 직접 바꾸고 redraw 호출) */
-function drawThumbs(boxId, list, redraw, urlOf) {
-  urlOf = urlOf || function (p) { return p.url; };
+function drawThumbs(boxId, list, redraw, urlOf, onEdit) {
+  urlOf = urlOf || function (p) { return typeof p === 'string' ? p : p.url; };
   var n = list.length;
   $(boxId).innerHTML = list.map(function (p, i) {
     return '<figure class="th"><img src="' + urlOf(p) + '" alt="사진 ' + (i + 1) + '">' +
@@ -73,6 +73,65 @@ function drawThumbs(boxId, list, redraw, urlOf) {
       redraw();
     };
   });
+  // 사진을 두 번 누르면(더블클릭 · 폰은 두 번 톡톡) 편집 창 열기
+  if (onEdit) [].forEach.call($(boxId).querySelectorAll('figure.th img'), function (img, i) {
+    var last = 0; img.title = '두 번 누르면 사진 편집 (돌리기 · 모자이크)'; img.style.cursor = 'pointer';
+    img.addEventListener('click', function () { var t = Date.now(); if (t - last < 400) { last = 0; onEdit(i); } else last = t; });
+  });
+}
+
+/* 사진 편집: 왼쪽·오른쪽 돌리기, 모자이크(끌어서 네모 칠하기), 되돌리기
+ * src: 사진 주소, done({blob,url}) 저장 시, cancel() 취소 시 */
+function photoEditor(src, done, cancel) {
+  modal('<h3 style="margin:0 0 6px">사진 편집</h3>' +
+    '<div class="pe-tools"><button type="button" class="btn btn-line btn-sm" id="pe-l">↺ 왼쪽으로</button><button type="button" class="btn btn-line btn-sm" id="pe-r">↻ 오른쪽으로</button>' +
+    '<button type="button" class="btn btn-line btn-sm" id="pe-m" aria-pressed="false">▦ 모자이크</button><button type="button" class="btn btn-line btn-sm" id="pe-u" disabled>되돌리기</button><button type="button" class="btn btn-line btn-sm" id="pe-0" disabled>처음 사진으로</button></div>' +
+    '<p class="hint" id="pe-hint" style="margin:6px 0">돌리기 버튼으로 방향을 맞추세요. 번호판·얼굴은 [모자이크]를 누른 뒤 사진 위를 끌어서 네모로 칠하면 가려집니다.</p>' +
+    '<div class="pe-stage"><canvas id="pe-c"></canvas></div>' +
+    '<div class="btns" style="margin-top:12px"><button class="btn btn-primary" id="pe-ok">편집 저장</button><button class="btn btn-line" id="pe-x">취소</button></div><p class="hint" id="pe-msg" role="status"></p>');
+  $('modal-box').classList.add('wide');
+  var cv = $('pe-c'), ctx = cv.getContext('2d'), hist = [], orig = null, mosaic = false, drag = null, base = null;
+  var copy = function (c) { var k = document.createElement('canvas'); k.width = c.width; k.height = c.height; k.getContext('2d').drawImage(c, 0, 0); return k; };
+  var put = function (k) { cv.width = k.width; cv.height = k.height; ctx.drawImage(k, 0, 0); };
+  var push = function () { hist.push(copy(cv)); if (hist.length > 15) hist.shift(); $('pe-u').disabled = false; $('pe-0').disabled = false; };
+  var img = new Image(); img.crossOrigin = 'anonymous';
+  img.onload = function () { cv.width = img.naturalWidth; cv.height = img.naturalHeight; ctx.drawImage(img, 0, 0); orig = copy(cv); };
+  img.onerror = function () { $('pe-msg').textContent = '사진을 불러오지 못했습니다.'; };
+  img.src = src;
+  function rotate(dir) {
+    if (!orig) return; push();
+    var k = copy(cv); cv.width = k.height; cv.height = k.width;
+    ctx.save(); ctx.translate(cv.width / 2, cv.height / 2); ctx.rotate(dir * Math.PI / 2); ctx.drawImage(k, -k.width / 2, -k.height / 2); ctx.restore();
+  }
+  $('pe-l').onclick = function () { rotate(-1); };
+  $('pe-r').onclick = function () { rotate(1); };
+  $('pe-m').onclick = function () { mosaic = !mosaic; this.setAttribute('aria-pressed', mosaic); this.classList.toggle('btn-primary', mosaic); this.classList.toggle('btn-line', !mosaic); cv.style.cursor = mosaic ? 'crosshair' : ''; cv.style.touchAction = mosaic ? 'none' : ''; $('pe-hint').textContent = mosaic ? '가릴 곳을 손가락이나 마우스로 끌어서 네모를 그리세요. 여러 번 그릴 수 있습니다.' : '돌리기 버튼으로 방향을 맞추세요. 번호판·얼굴은 [모자이크]를 누른 뒤 사진 위를 끌어서 네모로 칠하면 가려집니다.'; };
+  $('pe-u').onclick = function () { var k = hist.pop(); if (k) put(k); this.disabled = !hist.length; };
+  $('pe-0').onclick = function () { if (!orig) return; push(); put(orig); };
+  var pos = function (e) { var r = cv.getBoundingClientRect(); return { x: Math.max(0, Math.min(cv.width, (e.clientX - r.left) * cv.width / r.width)), y: Math.max(0, Math.min(cv.height, (e.clientY - r.top) * cv.height / r.height)) }; };
+  var rect = function (a, b) { return { x: Math.min(a.x, b.x), y: Math.min(a.y, b.y), w: Math.abs(a.x - b.x), h: Math.abs(a.y - b.y) }; };
+  cv.addEventListener('pointerdown', function (e) { if (!mosaic || !orig) return; e.preventDefault(); cv.setPointerCapture(e.pointerId); drag = pos(e); base = copy(cv); });
+  cv.addEventListener('pointermove', function (e) {
+    if (!drag) return; var q = rect(drag, pos(e));
+    ctx.drawImage(base, 0, 0); ctx.save(); ctx.lineWidth = Math.max(3, cv.width / 300); ctx.setLineDash([ctx.lineWidth * 3, ctx.lineWidth * 2]); ctx.strokeStyle = '#F2A900'; ctx.strokeRect(q.x, q.y, q.w, q.h); ctx.restore();
+  });
+  var finish = function (e) {
+    if (!drag) return; var q = rect(drag, pos(e)); drag = null; ctx.drawImage(base, 0, 0);
+    if (q.w < 6 || q.h < 6) return;
+    hist.push(base); if (hist.length > 15) hist.shift(); $('pe-u').disabled = false; $('pe-0').disabled = false;
+    var b = Math.max(8, Math.round(Math.max(cv.width, cv.height) / 60));
+    var sw = Math.max(1, Math.round(q.w / b)), sh = Math.max(1, Math.round(q.h / b));
+    var t = document.createElement('canvas'); t.width = sw; t.height = sh; t.getContext('2d').drawImage(cv, q.x, q.y, q.w, q.h, 0, 0, sw, sh);
+    ctx.save(); ctx.imageSmoothingEnabled = false; ctx.drawImage(t, 0, 0, sw, sh, q.x, q.y, q.w, q.h); ctx.restore();
+  };
+  cv.addEventListener('pointerup', finish); cv.addEventListener('pointercancel', function () { if (drag) { ctx.drawImage(base, 0, 0); drag = null; } });
+  $('pe-x').onclick = function () { closeModal(); cancel && cancel(); };
+  $('pe-ok').onclick = function () {
+    if (!orig) return; var btn = this; btn.disabled = true;
+    try {
+      cv.toBlob(function (bl) { if (!bl) { btn.disabled = false; $('pe-msg').textContent = '저장하지 못했습니다.'; return; } closeModal(); done({ blob: bl, url: URL.createObjectURL(bl), edited: true }); }, 'image/jpeg', 0.85);
+    } catch (err) { btn.disabled = false; $('pe-msg').textContent = '이 사진은 편집 저장을 할 수 없습니다. (' + err.message + ')'; }
+  };
 }
 
 /* 사진 크게 보기: 좌우 화살표 · 키보드 · 밀어서 넘기기 */
