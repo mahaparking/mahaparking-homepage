@@ -7,7 +7,7 @@ const SITE = 'https://mahaparking.co.kr';
 const root = document.getElementById('sales-root');
 
 const D = { sites: [], managers: [], jobs: [], promos: [], sends: [], mails: [], settings: {}, loaded: false };
-const V = { mail: { ids: new Set(), kind: 'all', st: 'all', q: '', title: '', date: '' }, sub: 'managers', mq: '', mf: 'all', mk: 'all', sq: '', sf: 'all', sk: 'all', send: { promo: '', ids: new Set(), text: '', opened: new Set() } };
+const V = { ms: 'all', send2: { kind: 'all', st: 'all', q: '', worked: false }, mail: { ids: new Set(), kind: 'all', st: 'all', q: '', title: '', date: '' }, sub: 'managers', mq: '', mf: 'all', mk: 'all', sq: '', sf: 'all', sk: 'all', send: { promo: '', ids: new Set(), text: '', opened: new Set() } };
 
 const SUBS = [['managers', '담당자'], ['sites', '단지·건물'], ['promos', '홍보물'], ['send', '문자 보내기'], ['mail', '📮 우편'], ['history', '보낸 기록'], ['settings', '설정']];
 const SITE_KINDS = ['아파트', '건물·빌라', '기타'];
@@ -15,6 +15,9 @@ const SITE_KINDS = ['아파트', '건물·빌라', '기타'];
 const kindOf = (k) => (k === '아파트' ? '아파트' : /빌라|오피스텔|상가|건물/.test(k || '') ? '건물·빌라' : '기타');
 const guessKind = (name) => (/아파트|단지/.test(name) ? '아파트' : /빌라|맨션|하우스|빌딩|타워|오피스텔|상가|건물|프라자|센터|빌|팰리스|캐슬/.test(name) ? '건물·빌라' : '기타');
 const KIND_ALL = ['all', '전체 구분'];
+const ST_ALL = ['all', '전체 상태'];
+const kindSelect = (id, cur) => `<select id="${id}" style="width:auto">${[KIND_ALL].concat(SITE_KINDS.map((k) => [k, k])).map(([v, t]) => `<option value="${v}"${v === cur ? ' selected' : ''}>${t}</option>`).join('')}</select>`;
+const stSelect = (id, cur) => `<select id="${id}" style="width:auto">${[ST_ALL].concat(Object.keys({ lead: 1, client: 1, hold: 1 }).map((k) => [k, ({ lead: '영업 대상', client: '거래처', hold: '보류' })[k]])).map(([v, t]) => `<option value="${v}"${v === cur ? ' selected' : ''}>${t}</option>`).join('')}</select>`;
 const TITLES = ['관리소장', '관리과장', '관리인', '건물주', '관리단 대표', '시설 담당'];
 /** 구분별 문구 예시 (보내기 3번에서 눌러 채움) */
 const TEMPLATES = {
@@ -74,6 +77,7 @@ function buildMessage(text, promo) {
 const curJobs = (mid) => D.jobs.filter((j) => j.manager_id === mid && j.is_current);
 const jobSite = (j) => (j.site_id && byId(D.sites, j.site_id)) || null;
 const jobName = (j) => { const s = jobSite(j); return s ? s.name : j.site_name || '(근무지 미등록)'; };
+const mgrStatuses = (mid) => curJobs(mid).map((j) => (jobSite(j) || {}).status).filter(Boolean);
 const mgrKinds = (mid) => curJobs(mid).map((j) => kindOf((jobSite(j) || { kind: guessKind(j.site_name || '') }).kind));
 const curSiteText = (mid) => curJobs(mid).map(jobName).join(', ');
 const siteManagers = (sid) => D.jobs.filter((j) => j.site_id === sid && j.is_current).map((j) => byId(D.managers, j.manager_id)).filter(Boolean);
@@ -148,7 +152,7 @@ const body = () => root.querySelector('#sl-body');
  * 1. 담당자 (관리소장 · 건물 관리인 · 건물주 등)
  * ========================================================= */
 function drawManagers() {
-  const F = { all: '전체', consent: '수신 동의', none: '동의 안 받음', optout: '수신거부', worked: '함께 일해 본 분' };
+  const F = { all: '전체', consent: '수신 동의', none: '동의 안 받음', optout: '수신거부', worked: '기존 고객' };
   body().innerHTML = `
     <p class="hint">아파트 관리소장님, 건물·빌라 관리인·건물주 등 연락할 분을 모읍니다. 명함을 찍으면 이름·휴대폰·근무지가 자동으로 들어갑니다. 다른 곳으로 옮기시면 <b>근무지 변경</b>을 눌러 주세요. 연락처와 수신 동의는 사람을 따라갑니다.</p>
     <div class="add-row" style="align-items:center">
@@ -156,10 +160,10 @@ function drawManagers() {
       <button class="btn btn-line btn-sm" type="button" id="m-add">+ 직접 등록</button>
       <input type="file" id="m-file" accept="image/*" class="hidden">
       <input id="m-q" placeholder="이름 · 근무지 · 번호 찾기" value="${esc(V.mq)}" style="max-width:220px">
-      <select id="m-k" style="width:auto">${[KIND_ALL].concat(SITE_KINDS.map((k) => [k, k])).map(([v, t]) => `<option value="${v}"${v === V.mk ? ' selected' : ''}>${t}</option>`).join('')}</select>
+      ${kindSelect('m-k', V.mk)}${stSelect('m-s', V.ms)}
       <select id="m-f" style="width:auto">${Object.keys(F).map((k) => `<option value="${k}"${k === V.mf ? ' selected' : ''}>${F[k]}</option>`).join('')}</select>
     </div>
-    <div class="sl-kpis">${[['등록', D.managers.length], ['수신 동의', D.managers.filter(sendable).length], ['함께 일해 봄', D.managers.filter((m) => m.worked_with).length], ['수신거부', D.managers.filter((m) => m.opt_out).length]].map(([k, v]) => `<div><span>${k}</span><b>${v}</b></div>`).join('')}</div>
+    <div class="sl-kpis">${[['등록', D.managers.length], ['수신 동의', D.managers.filter(sendable).length], ['기존 고객', D.managers.filter((m) => m.worked_with).length], ['수신거부', D.managers.filter((m) => m.opt_out).length]].map(([k, v]) => `<div><span>${k}</span><b>${v}</b></div>`).join('')}</div>
     <div class="sl-list" id="m-list"></div>`;
   const draw = () => {
     const qq = V.mq.replace(/\s/g, '').toLowerCase();
@@ -169,6 +173,7 @@ function drawManagers() {
       if (V.mf === 'optout' && !m.opt_out) return false;
       if (V.mf === 'worked' && !m.worked_with) return false;
       if (V.mk !== 'all' && !mgrKinds(m.id).includes(V.mk)) return false;
+      if (V.ms !== 'all' && !mgrStatuses(m.id).includes(V.ms)) return false;
       if (!qq) return true;
       return [m.name, m.title, m.mobile, digits(m.mobile), curSiteText(m.id), m.memo].join(' ').replace(/\s/g, '').toLowerCase().includes(qq);
     });
@@ -177,7 +182,7 @@ function drawManagers() {
         <div class="sl-co">${curSiteText(m.id) ? `🏢 <b>${esc(curSiteText(m.id))}</b>` : '<span class="hint">🏢 근무지 미등록</span>'}${[...new Set(mgrKinds(m.id))].map((k) => ` <span class="status sl-kind">${k}</span>`).join('')}</div>
         <div class="sl-card-h"><b class="sl-person">${esc(m.name)}</b><span class="hint">${esc(m.title || '')}</span>
           ${m.opt_out ? '<span class="status st-new">수신거부</span>' : m.consent ? '<span class="status st-sent">수신 동의</span>' : '<span class="status st-quote">동의 전</span>'}
-          ${m.worked_with ? '<span class="status sl-worked">함께 일함</span>' : ''}
+          ${m.worked_with ? '<span class="status sl-worked">기존 고객</span>' : ''}
           ${m.source === 'web' ? `<span class="status ${V.webSeen && m.created_at > V.webSeen ? 'st-new">새 신청' : 'st-quote">홈페이지 신청'}</span>` : ''}</div>
         <div class="sl-line">${m.mobile ? `📱 <a href="tel:${digits(m.mobile)}">${esc(tel(m.mobile))}</a>` : '<span class="hint">휴대폰 없음</span>'}</div>
         <div class="sl-line">${promoTag(lastPromoManager(m))}</div>
@@ -190,6 +195,7 @@ function drawManagers() {
   root.querySelector('#m-q').oninput = (e) => { V.mq = e.target.value; draw(); };
   root.querySelector('#m-f').onchange = (e) => { V.mf = e.target.value; draw(); };
   root.querySelector('#m-k').onchange = (e) => { V.mk = e.target.value; draw(); };
+  root.querySelector('#m-s').onchange = (e) => { V.ms = e.target.value; draw(); };
   root.querySelector('#m-add').onclick = () => managerModal(null);
   root.querySelector('#m-card').onclick = () => cardCamera(() => root.querySelector('#m-file').click());
   root.querySelector('#m-file').onchange = (e) => { const f = e.target.files[0]; e.target.value = ''; if (f) scanCard(f); };
@@ -286,7 +292,7 @@ function managerModal(m, pre) {
       ${m && m.consent_at ? `<span class="hint">동의 기록: ${fmtDate(m.consent_at)} · ${esc(m.consent_how || '')}</span>` : ''}
       ${m && m.opt_out ? `<span class="hint" style="color:var(--stop)">${fmtDate(m.opt_out_at)} 수신거부하셨습니다. 다시 동의를 받으신 경우에만 체크해 주세요.</span>` : ''}
     </div>
-    <label class="sl-chk"><input type="checkbox" id="mm-worked"${x.worked_with ? ' checked' : ''}> 마하파킹과 함께 일해 본 분</label>
+    <label class="sl-chk"><input type="checkbox" id="mm-worked"${x.worked_with ? ' checked' : ''}> <b>기존 고객</b> <span class="hint">(마하파킹과 거래·작업한 적이 있는 분)</span></label>
     <label class="f">메모 <span class="hint">(성향, 관심 장비, 다음 연락 시기 등)</span><textarea id="mm-memo">${esc(x.memo || '')}</textarea></label>
     ${m ? `<div><b style="font-size:14px">근무 이력</b><ul class="sl-hist">${jobs.length ? jobs.map((j) => `<li><span>${esc(jobName(j))}</span><span class="hint">${fmtDate(j.start_date) || '?'} ~ ${j.is_current ? '현재' : fmtDate(j.end_date)}</span></li>`).join('') : '<li class="hint">근무 이력이 없습니다.</li>'}</ul></div>` : ''}
     <div class="btns"><button class="btn btn-primary" id="mm-save">저장</button>${m ? '<button class="btn btn-line" id="mm-move">근무지 변경</button><button class="btn btn-danger" id="mm-del">삭제</button>' : ''}<button class="btn btn-line" data-close>닫기</button></div>
@@ -625,15 +631,14 @@ function drawSend() {
   const ok = D.managers.filter(sendable);
   const ex = { none: D.managers.filter((m) => !m.consent && !m.opt_out).length, out: D.managers.filter((m) => m.opt_out).length, noNum: D.managers.filter((m) => m.consent && !m.opt_out && !isMobile(m.mobile)).length };
   [...S.ids].forEach((id) => { if (!ok.some((m) => m.id === id)) S.ids.delete(id); });
-  const groups = {
-    all: ['수신 동의 전체', () => ok],
-    worked: ['함께 일해 본 분', () => ok.filter((m) => m.worked_with)],
-    client: ['거래처', () => ok.filter((m) => curJobs(m.id).some((j) => (jobSite(j) || {}).status === 'client'))],
-    lead: ['영업 대상', () => ok.filter((m) => curJobs(m.id).some((j) => (jobSite(j) || {}).status === 'lead'))],
-    k_apt: ['아파트', () => ok.filter((m) => mgrKinds(m.id).includes('아파트'))],
-    k_bld: ['건물·빌라', () => ok.filter((m) => mgrKinds(m.id).includes('건물·빌라'))],
-    k_etc: ['기타', () => ok.filter((m) => mgrKinds(m.id).includes('기타'))],
-  };
+  const F = V.send2;
+  const shown = ok.filter((m) => {
+    if (F.kind !== 'all' && !mgrKinds(m.id).includes(F.kind)) return false;
+    if (F.st !== 'all' && !mgrStatuses(m.id).includes(F.st)) return false;
+    if (F.worked && !m.worked_with) return false;
+    const qq = F.q.replace(/\s/g, '');
+    return !qq || [m.name, m.title, curSiteText(m.id), m.mobile].join(' ').replace(/\s/g, '').includes(qq);
+  });
   const night = kstHour() >= 21 || kstHour() < 8;
   body().innerHTML = `
     <div class="sl-step"><b><span class="sl-no">1</span>홍보물 고르기</b>
@@ -641,9 +646,10 @@ function drawSend() {
       ${promo ? `<p class="hint" style="margin:6px 0 0">${promo.kind === 'image' ? '이미지가 사진 문자(MMS)로 함께 가고, 크게 보는 주소도 붙습니다.' : '동영상은 문자에 넣을 수 없어 "영상 보기" 주소가 붙습니다.'}</p>` : ''}
     </div>
     <div class="sl-step"><b><span class="sl-no">2</span>받는 분 고르기</b>
-      <div class="add-row" style="margin:6px 0">${Object.keys(groups).map((k) => `<button class="btn btn-line btn-sm" type="button" data-grp="${k}">${groups[k][0]} (${groups[k][1]().length})</button>`).join('')}<button class="btn btn-line btn-sm" type="button" id="x-clear">모두 해제</button></div>
+      <div class="add-row" style="margin:6px 0;align-items:center">${kindSelect('x-k', F.kind)}${stSelect('x-s', F.st)}<input id="x-q" placeholder="이름 · 근무지 찾기" value="${esc(F.q)}" style="max-width:180px"><label class="sl-chk"><input type="checkbox" id="x-w"${F.worked ? ' checked' : ''}> 기존 고객만</label></div>
+      <div class="add-row" style="margin:0 0 6px"><button class="btn btn-line btn-sm" type="button" id="x-all">보이는 분 모두 선택 (${shown.length})</button><button class="btn btn-line btn-sm" type="button" id="x-clear">모두 해제</button></div>
       <p class="hint" style="margin:0 0 6px">수신 동의한 분만 고를 수 있습니다. 빠진 분: 동의 전 ${ex.none}명 · 수신거부 ${ex.out}명 · 휴대폰 없음 ${ex.noNum}명</p>
-      <div class="sl-pick">${ok.length ? ok.map((m) => `<label class="sl-chk"><input type="checkbox" data-pick="${m.id}"${S.ids.has(m.id) ? ' checked' : ''}> <span><b>${esc(m.name)}</b> <span class="hint">${esc(curSiteText(m.id) || '')} · ${esc(tel(m.mobile))}</span><br>${promoTag(lastPromoManager(m), true)}</span></label>`).join('') : '<p class="empty">수신 동의한 분이 아직 없습니다. 담당자 화면에서 동의를 체크해 주세요.</p>'}</div>
+      <div class="sl-pick">${shown.length ? shown.map((m) => `<label class="sl-chk"><input type="checkbox" data-pick="${m.id}"${S.ids.has(m.id) ? ' checked' : ''}> <span><b>${esc(m.name)}</b> <span class="hint">${esc(curSiteText(m.id) || '')} · ${esc(tel(m.mobile))}</span><br>${promoTag(lastPromoManager(m), true)}</span></label>`).join('') : '<p class="empty">수신 동의한 분이 아직 없습니다. 담당자 화면에서 동의를 체크해 주세요.</p>'}</div>
       <p style="margin:6px 0 0"><b id="x-count">${S.ids.size}</b>명 선택</p>
     </div>
     <div class="sl-step"><b><span class="sl-no">3</span>문구 쓰기</b>
@@ -676,7 +682,11 @@ function drawSend() {
   };
   const count = () => { $$('#x-count').textContent = S.ids.size; drawPrev(); };
   $$('#x-promo').onchange = (e) => { S.promo = e.target.value; const p = byId(D.promos, S.promo); if (p && p.body) S.text = p.body; drawSend(); };
-  root.querySelectorAll('[data-grp]').forEach((b) => { b.onclick = () => { groups[b.dataset.grp][1]().forEach((m) => S.ids.add(m.id)); drawSend(); }; });
+  $$('#x-k').onchange = (e) => { F.kind = e.target.value; drawSend(); };
+  $$('#x-s').onchange = (e) => { F.st = e.target.value; drawSend(); };
+  $$('#x-q').onchange = (e) => { F.q = e.target.value; drawSend(); };
+  $$('#x-w').onchange = (e) => { F.worked = e.target.checked; drawSend(); };
+  $$('#x-all').onclick = () => { shown.forEach((m) => S.ids.add(m.id)); drawSend(); };
   $$('#x-clear').onclick = () => { S.ids.clear(); drawSend(); };
   root.querySelectorAll('[data-pick]').forEach((c) => { c.onchange = () => { if (c.checked) S.ids.add(c.dataset.pick); else S.ids.delete(c.dataset.pick); count(); }; });
   $$('#x-text').oninput = (e) => { S.text = e.target.value; drawPrev(); };
@@ -764,8 +774,7 @@ function drawMail() {
       <ul class="sl-hist">${due.map((d, k) => { const x = byId(D.sites, d.r.site_id); const ms = x ? siteManagers(x.id) : []; const ph = ms.find((m) => isMobile(m.mobile)); const call = ph ? ph.mobile : x && x.office_tel; return `<li><span><b>${esc(x ? x.name : d.r.name)}</b> <span class="hint">${dot(d.send.created_at)} · ${esc(d.send.promo_title || '')}${ms.length ? ' · ' + esc(ms.map((m) => m.name + ' ' + (m.title || '')).join(', ')) : ''}</span></span><span style="display:flex;gap:6px">${call ? `<a class="btn btn-primary btn-sm" href="tel:${digits(call)}">☎ ${esc(tel(call))}</a>` : ''}<button class="btn btn-line btn-sm" type="button" data-called="${k}">전화 완료</button></span></li>`; }).join('')}</ul></div>` : ''}
     <div class="sl-step"><b><span class="sl-no">1</span>보낼 곳 고르기</b>
       <div class="add-row" style="margin:4px 0;align-items:center">
-        <select id="ml-kind" style="width:auto">${[KIND_ALL].concat(SITE_KINDS.map((k) => [k, k])).map(([v, t]) => `<option value="${v}"${v === M.kind ? ' selected' : ''}>${t}</option>`).join('')}</select>
-        <select id="ml-st" style="width:auto">${[['all', '전체 상태']].concat(Object.keys(SITE_ST).map((k) => [k, SITE_ST[k][0]])).map(([v, t]) => `<option value="${v}"${v === M.st ? ' selected' : ''}>${t}</option>`).join('')}</select>
+        ${kindSelect('ml-kind', M.kind)}${stSelect('ml-st', M.st)}
         <input id="ml-q" placeholder="이름 · 지역 · 주소 찾기" value="${esc(M.q)}" style="max-width:200px">
         <button class="btn btn-line btn-sm" type="button" id="ml-all">보이는 곳 모두 선택</button><button class="btn btn-line btn-sm" type="button" id="ml-none">모두 해제</button>
       </div>
