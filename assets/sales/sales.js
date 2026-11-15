@@ -219,6 +219,25 @@ async function scanCard(file) {
   }
 }
 
+/** 구분 고르기 (아파트 / 건물·빌라 / 기타). 근무지 이름을 적으면 자동으로 맞춰 주고, 직접 고르면 그대로 둠 */
+function kindPicker(id, cur) {
+  return `<div class="sl-kinds" role="radiogroup" aria-label="구분" id="${id}">${SITE_KINDS.map((k) => `<label class="sl-kindopt"><input type="radio" name="${id}" value="${k}"${k === cur ? ' checked' : ''}> ${k}</label>`).join('')}</div>`;
+}
+function bindKind(nameInputId, pickerId) {
+  const inp = document.getElementById(nameInputId), box = document.getElementById(pickerId);
+  if (!inp || !box) return;
+  let touched = false;
+  box.querySelectorAll('input').forEach((r) => { r.onchange = () => { touched = true; }; });
+  const auto = () => {
+    if (touched) return;
+    const ex = siteByName(inp.value);
+    const k = ex ? kindOf(ex.kind) : inp.value.trim() ? guessKind(inp.value) : '';
+    box.querySelectorAll('input').forEach((r) => { r.checked = r.value === k; });
+  };
+  inp.addEventListener('input', auto); inp.addEventListener('change', auto); auto();
+}
+const readKind = (pickerId) => { const r = document.querySelector(`#${pickerId} input:checked`); return r ? r.value : ''; };
+
 function siteDatalist() { return `<datalist id="sl-sites">${D.sites.map((s) => `<option value="${esc(s.name)}">`).join('')}</datalist>`; }
 
 function managerModal(m, pre) {
@@ -230,7 +249,9 @@ function managerModal(m, pre) {
     ${pre && pre.cardUrl ? `<img src="${pre.cardUrl}" alt="명함 사진" style="max-height:160px;border-radius:10px;object-fit:contain;background:#F7F9FB"><p class="hint" style="margin:0">명함에서 읽은 내용입니다. 틀린 곳이 있으면 고쳐 주세요.</p>` : ''}
     <div class="row2"><label class="f">이름<input id="mm-name" value="${esc(x.name)}"></label><label class="f">직함<input id="mm-title" list="sl-titles" value="${esc(x.title || '')}" placeholder="관리소장 · 관리인 · 건물주 등"><datalist id="sl-titles">${TITLES.map((t) => `<option value="${t}">`).join('')}</datalist></label></div>
     <div class="row2"><label class="f">휴대폰<input id="mm-mobile" inputmode="tel" value="${esc(tel(x.mobile))}"></label><label class="f">이메일<input id="mm-email" type="email" value="${esc(x.email || '')}"></label></div>
-    ${isNew ? `<label class="f">현재 근무지 (아파트·건물 이름) <span class="hint">(등록된 곳에서 고르거나 새 이름을 적으면 함께 만들어집니다)</span><input id="mm-site" list="sl-sites" value="${esc((pre && pre.site) || '')}">${siteDatalist()}</label>` : ''}
+    ${isNew ? `<label class="f">현재 근무지 (아파트·건물 이름) <span class="hint">(등록된 곳에서 고르거나 새 이름을 적으면 함께 만들어집니다)</span><input id="mm-site" list="sl-sites" value="${esc((pre && pre.site) || '')}">${siteDatalist()}</label>
+      <div class="f"><span>근무지 구분 <span class="hint">(이름을 보고 자동으로 골라 두었습니다. 다르면 바꿔 주세요)</span></span>${kindPicker('mm-kind', '')}</div>`
+      : (() => { const cs = curJobs(m.id).map(jobSite).filter(Boolean)[0]; return cs ? `<div class="f"><span>근무지 구분 <span class="hint">(${esc(cs.name)})</span></span>${kindPicker('mm-kind', kindOf(cs.kind))}</div>` : ''; })()}
     <div class="sl-consent">
       <label class="sl-chk"><input type="checkbox" id="mm-consent"${x.consent && !x.opt_out ? ' checked' : ''}> <b>홍보 문자·카톡 수신에 동의하셨습니다</b></label>
       <select id="mm-how" style="width:auto">${opt(HOW, x.consent_how || HOW[1])}</select>
@@ -243,6 +264,7 @@ function managerModal(m, pre) {
     <div class="btns"><button class="btn btn-primary" id="mm-save">저장</button>${m ? '<button class="btn btn-line" id="mm-move">근무지 변경</button><button class="btn btn-danger" id="mm-del">삭제</button>' : ''}<button class="btn btn-line" data-close>닫기</button></div>
     <p class="hint" id="mm-msg" role="status"></p>`);
   const g = (id) => document.getElementById(id);
+  if (isNew) bindKind('mm-site', 'mm-kind');
   g('mm-save').onclick = async () => {
     const name = g('mm-name').value.trim();
     if (!name) { g('mm-msg').textContent = '이름을 적어 주세요.'; return; }
@@ -251,6 +273,7 @@ function managerModal(m, pre) {
     if (consent && !(m && m.consent && !m.opt_out)) Object.assign(row, { consent: true, consent_at: nowIso(), consent_how: g('mm-how').value, opt_out: false, opt_out_at: null });
     if (!consent && m && m.consent) Object.assign(row, { consent: false });
     if (consent && m && m.consent && g('mm-how').value !== m.consent_how) row.consent_how = g('mm-how').value;
+    if (isNew && g('mm-site').value.trim() && !readKind('mm-kind')) { g('mm-msg').textContent = '근무지 구분(아파트 / 건물·빌라 / 기타)을 골라 주세요.'; return; }
     if (consent && !isMobile(row.mobile)) { g('mm-msg').textContent = '문자를 받으실 휴대폰 번호(010…)를 확인해 주세요.'; return; }
     const dup = row.mobile && D.managers.find((y) => digits(y.mobile) === row.mobile && (!m || y.id !== m.id));
     if (dup) { g('mm-msg').textContent = `같은 번호로 이미 등록된 분이 있습니다: ${dup.name}`; return; }
@@ -265,9 +288,11 @@ function managerModal(m, pre) {
           if (!up.error) { await sb.from('managers').update({ card_path: path }).eq('id', saved.id); saved.card_path = path; }
         }
         const siteName = g('mm-site').value.trim();
-        if (siteName) await startJob(saved, siteName, today(), pre);
+        if (siteName) await startJob(saved, siteName, today(), pre, readKind('mm-kind'));
       } else {
         const saved = await q(sb.from('managers').update(row).eq('id', m.id).select().single(), '저장하지 못했습니다.');
+        const cs = curJobs(m.id).map(jobSite).filter(Boolean)[0], k = readKind('mm-kind');
+        if (cs && k && k !== kindOf(cs.kind)) { await sb.from('sites').update({ kind: k, updated_at: nowIso() }).eq('id', cs.id); cs.kind = k; }
         Object.assign(m, saved);
       }
       closeModal(); mount();
@@ -292,18 +317,21 @@ function deleteManager(m) {
 }
 
 /** 단지 찾기 또는 새로 만들기 (새 단지는 영업 대상) */
-async function ensureSite(name, pre) {
+async function ensureSite(name, pre, kind) {
   let s = siteByName(name);
-  if (s) return { site: s, created: false };
-  const row = { name: name.trim(), kind: guessKind(name), status: 'lead' };
+  if (s) {
+    if (kind && kind !== kindOf(s.kind)) { await sb.from('sites').update({ kind, updated_at: nowIso() }).eq('id', s.id); s.kind = kind; }
+    return { site: s, created: false };
+  }
+  const row = { name: name.trim(), kind: kind || guessKind(name), status: 'lead' };
   if (pre) { if (pre.office_tel) row.office_tel = digits(pre.office_tel); if (pre.office_fax) row.office_fax = digits(pre.office_fax); if (pre.address) row.address = pre.address; if (pre.mgmt_company) row.mgmt_company = pre.mgmt_company; }
   s = await q(sb.from('sites').insert(row).select().single(), '단지를 만들지 못했습니다.');
   D.sites.push(s); D.sites.sort((a, b) => a.name.localeCompare(b.name, 'ko'));
   return { site: s, created: true };
 }
 
-async function startJob(m, siteName, start, pre) {
-  const { site, created } = await ensureSite(siteName, pre);
+async function startJob(m, siteName, start, pre, kind) {
+  const { site, created } = await ensureSite(siteName, pre, kind);
   const job = await q(sb.from('manager_jobs').insert({ manager_id: m.id, site_id: site.id, site_name: site.name, start_date: start || today(), is_current: true }).select().single(), '근무 이력을 저장하지 못했습니다.');
   D.jobs.unshift(job);
   if (site.need_new_manager) { await sb.from('sites').update({ need_new_manager: false, updated_at: nowIso() }).eq('id', site.id); site.need_new_manager = false; }
@@ -315,10 +343,12 @@ function moveModal(m) {
   modal(`<h3>${esc(m.name)} ${esc(m.title || '')}님 근무지 변경</h3>
     <p class="hint" style="margin:0">지금 근무지: <b>${esc(cur.map(jobName).join(', ') || '없음')}</b><br>옮기시면 이전 근무지는 "새 담당자 확인 필요"로 표시되고, 새 근무지가 아직 거래처가 아니면 <b>영업 대상</b>으로 등록됩니다.</p>
     <label class="f">새 근무지 (아파트·건물 이름)<input id="mv-site" list="sl-sites" placeholder="아파트·건물 이름">${siteDatalist()}</label>
+    <div class="f"><span>새 근무지 구분</span>${kindPicker('mv-kind', '')}</div>
     <label class="f">옮기신 날<input id="mv-date" type="date" value="${today()}"></label>
     <div class="btns"><button class="btn btn-primary" id="mv-go">변경하기</button><button class="btn btn-line" data-close>취소</button></div>
     <p class="hint" id="mv-msg" role="status"></p>`);
   const g = (id) => document.getElementById(id);
+  bindKind('mv-site', 'mv-kind');
   g('mv-go').onclick = async () => {
     const name = g('mv-site').value.trim(), d = g('mv-date').value || today();
     if (!name) { g('mv-msg').textContent = '새 근무지 이름을 적어 주세요.'; return; }
@@ -334,7 +364,7 @@ function moveModal(m) {
       for (const s of oldSites) {
         if (!siteManagers(s.id).length) { await sb.from('sites').update({ need_new_manager: true, updated_at: nowIso() }).eq('id', s.id); s.need_new_manager = true; flagged.push(s.name); }
       }
-      const { site, created } = await startJob(m, name, d);
+      const { site, created } = await startJob(m, name, d, null, readKind('mv-kind'));
       modal(`<h3>근무지를 바꿨습니다</h3>
         <p><b>${esc(m.name)}</b> ${esc(m.title || '')}님 → <b>${esc(site.name)}</b></p>
         ${site.status !== 'client' ? `<div class="notice"><b>${esc(site.name)}</b>${created ? '을(를) 새로 만들고' : '은(는)'} 영업 대상입니다. 마하파킹을 아시는 분이 계신 곳이니 먼저 연락해 보세요.</div>` : ''}
