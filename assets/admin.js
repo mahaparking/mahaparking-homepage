@@ -241,7 +241,7 @@
         kv('납&emsp;&emsp;품', esc(Q.delivery || '협의')) + kv('금&emsp;&emsp;액', '하기 참조') + kv('유효 기간', validText()) +
       '</table><div class="right"><img class="logo" src="/assets/logo-h-blue.png" alt="마하파킹"><table class="kv">' +
         kv('상&emsp;&emsp;호', '마하파킹 (273-11-02830)') + kv('주&emsp;&emsp;소', '경기도 안양시 만안구 만안로31-3 인터비즈 911호') +
-        kv('대&emsp;&emsp;표', '조 상 현 <span class="seal">(직인생략)</span>') + kv('전화 번호', MAHA.PHONE) +
+        kv('대&emsp;&emsp;표', '조 상 현 <span class="seal">(직인생략)</span>') + kv('전화 번호', MAHA.TEL + ' / ' + MAHA.PHONE) +
       '</table></div></div>' +
       '<p class="lead">하기와 같이 ' + esc(Q.title || '요청하신 작업') + '에 대해 견적 합니다.</p>' +
       '<table class="grid"><thead><tr><th style="width:44px">NO</th><th>품목</th><th>상세스펙</th><th style="width:84px">공급단가</th><th style="width:56px">총수량</th><th style="width:96px">견적가격</th><th style="width:110px">비고</th></tr></thead><tbody>' +

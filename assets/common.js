@@ -3,6 +3,7 @@ var MAHA = {
   SB_URL: 'https://bidlnzkaimceyblyvaut.supabase.co',
   SB_KEY: 'sb_publishable_RyfBwW7u_t4fgEnDRIWT7w_L8v4B4Zy',
   PHONE: '010-8275-1036',
+  TEL: '070-4866-1036',   // 대표번호
   EMAIL: 'ace@mahaparking.co.kr'
 };
 var $ = function (id) { return document.getElementById(id); };

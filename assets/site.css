@@ -29,7 +29,9 @@ header{position:sticky;top:0;z-index:20;background:var(--navy-2)}
 .menu button:hover{color:var(--signal)}
 .menu button[aria-current="page"]{color:#fff;background:rgba(255,255,255,.1)}
 .nav-call{text-decoration:none;background:var(--brand);color:#fff;padding:8px 16px;border-radius:999px;font-weight:700;font-size:15px;white-space:nowrap}
-@media (max-width:860px){.nav-call{display:none}.menu button{padding:6px 8px;font-size:14px}}
+.nav-calls{display:flex;gap:6px;align-items:center}
+.nav-call2{background:transparent;border:1.5px solid rgba(255,255,255,.55)}
+@media (max-width:860px){.nav-call,.nav-calls{display:none}.menu button{padding:6px 8px;font-size:14px}}
 @media (max-width:520px){.nav{height:auto;padding-top:10px;padding-bottom:6px;flex-wrap:wrap}.menu{width:100%;justify-content:space-between}}
 
 /* 버튼 */
