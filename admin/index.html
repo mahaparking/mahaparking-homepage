@@ -11,6 +11,10 @@
 <link href="https://fonts.googleapis.com/css2?family=Gothic+A1:wght@500;700;800;900&family=Noto+Sans+KR:wght@400;500;700;900&family=Black+Han+Sans&family=Do+Hyeon&family=Jua&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/assets/site.css">
 <style>
+.tab-groups{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:10px}
+.tab-group{display:flex;flex-wrap:wrap;gap:6px;align-items:center;align-content:flex-start;border:1px solid var(--line);border-radius:12px;padding:10px 12px;background:#fff}
+.tab-group-name{width:100%;font-size:12.5px;font-weight:700;color:var(--muted);letter-spacing:.02em}
+.tab-group button{padding:8px 13px;font-size:14.5px}
 .login{min-height:calc(100vh - 92px);display:grid;place-items:center;padding:24px;background:var(--navy)}
 .login .form{width:100%;max-width:380px}
 .req-photos{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px}
@@ -162,14 +166,22 @@
 <div id="view-admin" class="hidden">
   <div class="admin-bar"><div class="wrap" style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;align-items:center"><span><b>마하파킹 관리자</b> · <span id="who"></span></span><span style="display:flex;gap:8px"><a class="btn btn-line btn-sm" href="/" target="_blank" rel="noopener">홈페이지 보기</a><button class="btn btn-line btn-sm" id="logout">로그아웃</button></span></div></div>
   <div class="wrap">
-    <div class="tabs" role="tablist" id="admin-tabs">
-      <button role="tab" data-tab="sales">영업·홍보</button>
-      <button role="tab" data-tab="requests">견적 요청함 <span class="badge" id="new-badge"></span></button>
-      <button role="tab" data-tab="quote">견적서 작성</button>
-      <button role="tab" data-tab="shot">현장 기록 (시공사례·쇼츠·블로그)</button>
-      <button role="tab" data-tab="prices">견적 항목 관리</button>
-      <button role="tab" data-tab="stats">방문 통계</button>
-      <button role="tab" data-tab="market">시장 동향 <span class="badge hidden" id="mk-badge">N</span></button>
+    <div class="tabs tab-groups" role="tablist" id="admin-tabs">
+      <div class="tab-group"><span class="tab-group-name">홍보</span>
+        <button role="tab" data-tab="sales">영업·홍보</button>
+        <button role="tab" data-tab="shot">현장 기록 (시공사례·쇼츠·블로그)</button>
+      </div>
+      <div class="tab-group"><span class="tab-group-name">견적서</span>
+        <button role="tab" data-tab="requests">견적 요청함 <span class="badge" id="new-badge"></span></button>
+        <button role="tab" data-tab="quote">견적서 작성</button>
+        <button role="tab" data-tab="prices">견적 항목 관리</button>
+      </div>
+      <div class="tab-group"><span class="tab-group-name">홈페이지 관리</span>
+        <button role="tab" data-tab="stats">방문 통계</button>
+      </div>
+      <div class="tab-group"><span class="tab-group-name">영업 정보</span>
+        <button role="tab" data-tab="market">시장 동향 <span class="badge hidden" id="mk-badge">N</span></button>
+      </div>
     </div>
 
     <!-- 시장 동향 -->
