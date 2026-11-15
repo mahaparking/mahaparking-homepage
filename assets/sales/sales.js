@@ -6,10 +6,10 @@ const sb = supabase.createClient(MAHA.SB_URL, MAHA.SB_KEY);
 const SITE = 'https://mahaparking.co.kr';
 const root = document.getElementById('sales-root');
 
-const D = { sites: [], managers: [], jobs: [], promos: [], sends: [], settings: {}, loaded: false };
-const V = { sub: 'managers', mq: '', mf: 'all', mk: 'all', sq: '', sf: 'all', sk: 'all', send: { promo: '', ids: new Set(), text: '', opened: new Set() } };
+const D = { sites: [], managers: [], jobs: [], promos: [], sends: [], mails: [], settings: {}, loaded: false };
+const V = { mail: { ids: new Set(), kind: 'all', st: 'all', q: '', title: '', date: '' }, sub: 'managers', mq: '', mf: 'all', mk: 'all', sq: '', sf: 'all', sk: 'all', send: { promo: '', ids: new Set(), text: '', opened: new Set() } };
 
-const SUBS = [['managers', '담당자'], ['sites', '단지·건물'], ['promos', '홍보물'], ['send', '보내기'], ['history', '보낸 기록'], ['settings', '설정']];
+const SUBS = [['managers', '담당자'], ['sites', '단지·건물'], ['promos', '홍보물'], ['send', '문자 보내기'], ['mail', '📮 우편'], ['history', '보낸 기록'], ['settings', '설정']];
 const SITE_KINDS = ['아파트', '건물·빌라', '기타'];
 /** 예전 값(빌라·오피스텔 등)도 세 가지로 묶어 보기 */
 const kindOf = (k) => (k === '아파트' ? '아파트' : /빌라|오피스텔|상가|건물/.test(k || '') ? '건물·빌라' : '기타');
@@ -90,6 +90,7 @@ async function load() {
     sb.from('promos').select('*').order('created_at', { ascending: false }),
     sb.from('promo_sends').select('id,promo_title,channel,total,ok,fail,is_test,created_at').order('created_at', { ascending: false }).limit(200),
     sb.from('sales_settings').select('*'),
+    sb.from('promo_sends').select('*').eq('channel', 'mail').order('created_at', { ascending: false }).limit(300),
   ]);
   const err = r.find((x) => x.error);
   if (err) {
@@ -101,19 +102,20 @@ async function load() {
   }
   [D.sites, D.managers, D.jobs, D.promos, D.sends] = r.slice(0, 5).map((x) => x.data || []);
   D.settings = {}; (r[5].data || []).forEach((x) => { D.settings[x.key] = x.value || ''; });
+  D.mails = r[6].data || [];
   D.loaded = true;
   mount();
 }
 
 /* ---------- 화면 틀 ---------- */
 function mount() {
-  root.innerHTML = `<div class="sl-subs" role="tablist">${SUBS.map(([k, t]) => `<button type="button" role="tab" data-sub="${k}" aria-selected="${k === V.sub}">${t}${k === 'sites' ? '<span class="badge hidden" id="sl-need"></span>' : ''}${k === 'managers' ? '<span class="badge hidden" id="sl-web"></span>' : ''}</button>`).join('')}</div><div id="sl-body"></div>`;
+  root.innerHTML = `<div class="sl-subs" role="tablist">${SUBS.map(([k, t]) => `<button type="button" role="tab" data-sub="${k}" aria-selected="${k === V.sub}">${t}${k === 'sites' ? '<span class="badge hidden" id="sl-need"></span>' : ''}${k === 'managers' ? '<span class="badge hidden" id="sl-web"></span>' : ''}${k === 'mail' ? '<span class="badge hidden" id="sl-call"></span>' : ''}</button>`).join('')}</div><div id="sl-body"></div>`;
   root.querySelectorAll('[data-sub]').forEach((b) => { b.onclick = () => { V.sub = b.dataset.sub; mount(); }; });
   const need = D.sites.filter((s) => s.need_new_manager).length;
   const nb = root.querySelector('#sl-need'); nb.textContent = need || ''; nb.classList.toggle('hidden', !need);
   if (V.sub === 'managers') { if (!V.webSeen) V.webSeen = seenAt(); markWebSeen(); }
   refreshBadge();
-  ({ managers: drawManagers, sites: drawSites, promos: drawPromos, send: drawSend, history: drawHistory, settings: drawSettings })[V.sub]();
+  ({ managers: drawManagers, sites: drawSites, promos: drawPromos, send: drawSend, mail: drawMail, history: drawHistory, settings: drawSettings })[V.sub]();
 }
 const body = () => root.querySelector('#sl-body');
 
@@ -403,6 +405,7 @@ function drawSites() {
         <div class="sl-card-h"><b>${esc(s.name)}</b><span class="status sl-kind">${kindOf(s.kind)}</span><span class="status ${st[1]}">${st[0]}</span>${s.need_new_manager ? '<span class="status st-new">새 담당자 확인</span>' : ''}${s.region ? `<span class="hint">${esc(s.region)}</span>` : ''}</div>
         <div class="sl-line">👤 ${ms.length ? ms.map((m) => `${esc(m.name)} ${esc(m.title || '')}`).join(', ') : '<span class="hint">담당자 미등록</span>'}</div>
         <div class="sl-line">${s.office_tel ? `☎ <a href="tel:${digits(s.office_tel)}">${esc(tel(s.office_tel))}</a>` : ''}${s.office_fax ? ` <span class="hint">팩스 ${esc(tel(s.office_fax))}</span>` : ''}${s.households ? ` <span class="hint">· ${s.households}세대</span>` : ''}</div>
+        ${lastMail(s.id) ? `<div class="sl-line hint">📮 ${dot(lastMail(s.id).date)} 우편 발송 · ${esc(lastMail(s.id).title || '')}${lastMail(s.id).called ? ' · 전화 완료' : ''}</div>` : ''}
         <div class="sl-btns"><button class="btn btn-line btn-sm" type="button" data-sopen="${s.id}">자세히 · 수정</button><button class="btn btn-danger btn-sm" type="button" data-sdel="${s.id}">삭제</button></div>
       </div>`;
     }).join('') : '<p class="empty">해당하는 곳이 없습니다.</p>';
@@ -690,17 +693,166 @@ function drawSend() {
 }
 
 /* =========================================================
+ * 4-2. 우편 (주소 라벨 · e-그린우편 파일 · 발송 기록 · 전화할 곳)
+ * 기록은 promo_sends 에 channel='mail' 로 저장 (recipients: [{site_id, name, address, ok, called}])
+ * ========================================================= */
+const CALL_AFTER_DAYS = 7;
+function lastMail(siteId) {
+  for (const m of D.mails) {
+    const r = (m.recipients || []).find((x) => x.site_id === siteId);
+    if (r) return { date: m.created_at, title: m.promo_title, called: !!r.called };
+  }
+  return null;
+}
+/** 우편 보내고 7일 지났는데 아직 전화하지 않은 곳 */
+function callDue() {
+  const limit = Date.now() - CALL_AFTER_DAYS * 864e5, out = [], seen = new Set();
+  D.mails.forEach((m) => {
+    if (new Date(m.created_at).getTime() > limit) return;
+    (m.recipients || []).forEach((r, i) => {
+      if (r.called || seen.has(r.site_id)) return;
+      seen.add(r.site_id);
+      out.push({ send: m, idx: i, r });
+    });
+  });
+  return out;
+}
+const addrOf = (x) => (x.address || '').trim();
+const toWhom = (x) => (kindOf(x.kind) === '아파트' ? `${x.name} 관리사무소 관리소장님 귀하` : `${x.name} 관리자님 귀하`);
+
+function drawMail() {
+  const M = V.mail;
+  if (!M.date) M.date = today();
+  const list = D.sites.filter((x) => {
+    if (M.kind !== 'all' && kindOf(x.kind) !== M.kind) return false;
+    if (M.st !== 'all' && x.status !== M.st) return false;
+    const qq = M.q.replace(/\s/g, '');
+    return !qq || [x.name, x.region, x.address].join(' ').replace(/\s/g, '').includes(qq);
+  });
+  [...M.ids].forEach((id) => { const x = byId(D.sites, id); if (!x || !addrOf(x)) M.ids.delete(id); });
+  const due = callDue();
+  const titles = [...new Set(['주간 자가점검표'].concat(D.promos.map((p) => p.title)).concat(D.mails.map((m) => m.promo_title).filter(Boolean)))];
+  body().innerHTML = `
+    <p class="hint">우편(DM)은 문자와 달리 미리 동의를 받지 않아도 보낼 수 있습니다. 보낼 곳을 고르고 → 주소 라벨을 인쇄하거나 e-그린우편 파일을 받고 → <b>우편 보낸 것으로 기록</b>을 누르면, ${CALL_AFTER_DAYS}일 뒤 "전화할 곳"에 나타납니다.</p>
+    ${due.length ? `<div class="sl-step"><b>📞 전화할 곳 <span class="badge">${due.length}</span> <span class="hint" style="font-weight:400">우편 보내고 ${CALL_AFTER_DAYS}일이 지났습니다. "자료 받아 보셨나요?" 전화해 보세요</span></b>
+      <ul class="sl-hist">${due.map((d, k) => { const x = byId(D.sites, d.r.site_id); const ms = x ? siteManagers(x.id) : []; const ph = ms.find((m) => isMobile(m.mobile)); const call = ph ? ph.mobile : x && x.office_tel; return `<li><span><b>${esc(x ? x.name : d.r.name)}</b> <span class="hint">${dot(d.send.created_at)} · ${esc(d.send.promo_title || '')}${ms.length ? ' · ' + esc(ms.map((m) => m.name + ' ' + (m.title || '')).join(', ')) : ''}</span></span><span style="display:flex;gap:6px">${call ? `<a class="btn btn-primary btn-sm" href="tel:${digits(call)}">☎ ${esc(tel(call))}</a>` : ''}<button class="btn btn-line btn-sm" type="button" data-called="${k}">전화 완료</button></span></li>`; }).join('')}</ul></div>` : ''}
+    <div class="sl-step"><b><span class="sl-no">1</span>보낼 곳 고르기</b>
+      <div class="add-row" style="margin:4px 0;align-items:center">
+        <select id="ml-kind" style="width:auto">${[KIND_ALL].concat(SITE_KINDS.map((k) => [k, k])).map(([v, t]) => `<option value="${v}"${v === M.kind ? ' selected' : ''}>${t}</option>`).join('')}</select>
+        <select id="ml-st" style="width:auto">${[['all', '전체 상태']].concat(Object.keys(SITE_ST).map((k) => [k, SITE_ST[k][0]])).map(([v, t]) => `<option value="${v}"${v === M.st ? ' selected' : ''}>${t}</option>`).join('')}</select>
+        <input id="ml-q" placeholder="이름 · 지역 · 주소 찾기" value="${esc(M.q)}" style="max-width:200px">
+        <button class="btn btn-line btn-sm" type="button" id="ml-all">보이는 곳 모두 선택</button><button class="btn btn-line btn-sm" type="button" id="ml-none">모두 해제</button>
+      </div>
+      <div class="sl-pick">${list.length ? list.map((x) => { const lm = lastMail(x.id), ad = addrOf(x); return `<label class="sl-chk"${ad ? '' : ' style="opacity:.6"'}><input type="checkbox" data-mpick="${x.id}"${M.ids.has(x.id) ? ' checked' : ''}${ad ? '' : ' disabled'}> <span><b>${esc(x.name)}</b> <span class="status sl-kind">${kindOf(x.kind)}</span> <span class="hint">${ad ? esc(ad) : '주소 없음 — 단지·건물에서 주소를 넣어 주세요'}${lm ? ` · 📮 ${dot(lm.date)} 발송` : ''}</span></span></label>`; }).join('') : '<p class="empty">해당하는 곳이 없습니다. 단지·건물에서 먼저 등록해 주세요.</p>'}</div>
+      <p style="margin:6px 0 0"><b id="ml-n">${M.ids.size}</b>곳 선택</p>
+    </div>
+    <div class="sl-step"><b><span class="sl-no">2</span>주소 라벨 · 우편 파일</b>
+      <div class="btns"><button class="btn btn-line" type="button" id="ml-label">🖨 주소 라벨 인쇄 (A4 16칸)</button><button class="btn btn-line" type="button" id="ml-csv">⬇ e-그린우편용 주소 파일</button></div>
+      <p class="hint" style="margin:6px 0 0">라벨은 A4 16칸(2줄 × 8칸) 라벨지에 맞춰 인쇄됩니다. 주소 파일은 엑셀에서 열리며, 우체국 e-그린우편에 받는 사람 목록으로 올릴 수 있습니다. (우편번호 칸은 비어 있으니 필요하면 채워 주세요)</p>
+    </div>
+    <div class="sl-step"><b><span class="sl-no">3</span>우편 보낸 것으로 기록</b>
+      <div class="row2"><label class="f">보낸 홍보물<input id="ml-title" list="ml-titles" value="${esc(M.title)}" placeholder="예) 주간 자가점검표 + 작업 사례 전단"><datalist id="ml-titles">${titles.map((t) => `<option value="${esc(t)}">`).join('')}</datalist></label>
+      <label class="f">보낸 날<input id="ml-date" type="date" value="${esc(M.date)}"></label></div>
+      <div class="btns" style="margin-top:8px"><button class="btn btn-cta" type="button" id="ml-save">📮 우편 보낸 것으로 기록</button></div>
+    </div>`;
+  const $$ = (x) => root.querySelector(x);
+  $$('#ml-kind').onchange = (e) => { M.kind = e.target.value; drawMail(); };
+  $$('#ml-st').onchange = (e) => { M.st = e.target.value; drawMail(); };
+  $$('#ml-q').onchange = (e) => { M.q = e.target.value; drawMail(); };
+  $$('#ml-all').onclick = () => { list.forEach((x) => { if (addrOf(x)) M.ids.add(x.id); }); drawMail(); };
+  $$('#ml-none').onclick = () => { M.ids.clear(); drawMail(); };
+  root.querySelectorAll('[data-mpick]').forEach((c) => { c.onchange = () => { if (c.checked) M.ids.add(c.dataset.mpick); else M.ids.delete(c.dataset.mpick); $$('#ml-n').textContent = M.ids.size; }; });
+  $$('#ml-title').oninput = (e) => { M.title = e.target.value; };
+  $$('#ml-date').onchange = (e) => { M.date = e.target.value; };
+  const chosen = () => D.sites.filter((x) => M.ids.has(x.id));
+  const need = () => { if (!M.ids.size) { modal('<h3>보낼 곳을 먼저 골라 주세요</h3><button class="btn btn-primary" data-close>확인</button>'); return false; } return true; };
+  $$('#ml-label').onclick = () => { if (need()) printLabels(chosen()); };
+  $$('#ml-csv').onclick = () => {
+    if (!need()) return;
+    const rows = [['받는분', '우편번호', '주소', '구분', '전화']].concat(chosen().map((x) => [toWhom(x), '', addrOf(x), kindOf(x.kind), tel(x.office_tel)]));
+    const csv = '\ufeff' + rows.map((r) => r.map((v) => `"${String(v || '').replace(/"/g, '""')}"`).join(',')).join('\r\n');
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
+    a.download = `마하파킹_우편주소_${today()}.csv`; document.body.appendChild(a); a.click(); a.remove();
+  };
+  $$('#ml-save').onclick = () => {
+    if (!need()) return;
+    if (!M.title.trim()) { modal('<h3>보낸 홍보물 이름을 적어 주세요</h3><p class="hint">예) 주간 자가점검표</p><button class="btn btn-primary" data-close>확인</button>'); return; }
+    const sel = chosen();
+    modal(`<h3>${sel.length}곳에 우편을 보낸 것으로 기록할까요?</h3><p>${esc(M.title)} · ${dot(M.date)}</p><p class="hint">${CALL_AFTER_DAYS}일 뒤 "전화할 곳"에 나타납니다.</p><div class="btns"><button class="btn btn-cta" id="ml-yes">기록</button><button class="btn btn-line" data-close>취소</button></div>`);
+    document.getElementById('ml-yes').onclick = async () => {
+      try {
+        const when = new Date(`${M.date}T12:00:00+09:00`).toISOString();
+        const row = await q(sb.from('promo_sends').insert({ channel: 'mail', promo_title: M.title.trim(), recipients: sel.map((x) => ({ site_id: x.id, name: x.name, address: addrOf(x), ok: true, called: false })), total: sel.length, ok: sel.length, fail: 0, created_at: when }).select().single(), '기록하지 못했습니다.');
+        D.mails.unshift(row); D.mails.sort((a, b) => (a.created_at < b.created_at ? 1 : -1));
+        D.sends.unshift({ id: row.id, promo_title: row.promo_title, channel: 'mail', total: row.total, ok: row.ok, fail: 0, is_test: false, created_at: row.created_at });
+        D.sends.sort((a, b) => (a.created_at < b.created_at ? 1 : -1));
+        M.ids.clear();
+        modal(`<h3>기록했습니다 📮</h3><p>${sel.length}곳 · ${esc(row.promo_title)}</p><p class="hint">단지·건물 카드에 발송 날짜가 표시되고, "보낸 기록"에도 남습니다.</p><button class="btn btn-primary" data-close>확인</button>`);
+        mount();
+      } catch (e) { oops(e.userMsg || '기록하지 못했습니다.', e); }
+    };
+  };
+  root.querySelectorAll('[data-called]').forEach((b) => {
+    b.onclick = async () => {
+      const d = due[+b.dataset.called];
+      const rec = (d.send.recipients || []).map((r, i) => (i === d.idx || r.site_id === d.r.site_id ? { ...r, called: true, called_at: nowIso() } : r));
+      try {
+        await q(sb.from('promo_sends').update({ recipients: rec }).eq('id', d.send.id), '저장하지 못했습니다.');
+        d.send.recipients = rec;
+        // 같은 곳에 그 전에 보낸 우편도 전화 완료로
+        for (const m of D.mails) {
+          if (m === d.send || m.created_at > d.send.created_at) continue;   // 그 뒤에 새로 보낸 우편은 다시 전화 대상
+          const old = m.recipients || [];
+          if (old.some((r) => r.site_id === d.r.site_id && !r.called)) {
+            const nr = old.map((r) => (r.site_id === d.r.site_id ? { ...r, called: true, called_at: nowIso() } : r));
+            const u = await sb.from('promo_sends').update({ recipients: nr }).eq('id', m.id);
+            if (!u.error) m.recipients = nr;
+          }
+        }
+        mount();
+      } catch (e) { oops(e.userMsg || '저장하지 못했습니다.', e); }
+    };
+  });
+}
+
+/** A4 16칸(2 × 8) 주소 라벨 인쇄 */
+function printLabels(list) {
+  const w = window.open('', '_blank');
+  if (!w) { oops('팝업이 막혀 있습니다. 주소창 오른쪽에서 이 사이트의 팝업을 허용해 주세요.'); return; }
+  const cell = (x) => `<div class="lb"><div class="ad">${esc(addrOf(x))}</div><div class="to">${esc(toWhom(x))}</div></div>`;
+  const pages = [];
+  for (let i = 0; i < list.length; i += 16) pages.push(`<div class="sheet">${list.slice(i, i + 16).map(cell).join('')}</div>`);
+  w.document.write(`<!DOCTYPE html><html lang="ko"><head><meta charset="utf-8"><title>마하파킹 주소 라벨</title><style>
+    @page{size:A4;margin:0}
+    *{box-sizing:border-box}
+    body{margin:0;font-family:"Malgun Gothic","Noto Sans KR",sans-serif}
+    .sheet{width:210mm;height:297mm;padding:12.9mm 4.5mm 0;display:grid;grid-template-columns:99.1mm 99.1mm;grid-template-rows:repeat(8,33.9mm);align-content:start;column-gap:2.8mm;break-after:page;overflow:hidden}
+    .sheet:last-child{break-after:auto}
+    .lb{padding:4mm 6mm;display:flex;flex-direction:column;justify-content:center;gap:2.5mm;overflow:hidden;break-inside:avoid}
+    .ad{font-size:10.5pt;line-height:1.35}
+    .to{font-size:11.5pt;font-weight:700}
+    @media screen{body{background:#eee}.sheet{background:#fff;margin:10px auto;box-shadow:0 2px 10px rgba(0,0,0,.2)}.lb{outline:1px dashed #ccc}}
+  </style></head><body>${pages.join('')}<script>window.onload=function(){setTimeout(function(){window.print()},300)}<\/script></body></html>`);
+  w.document.close();
+}
+
+/* =========================================================
  * 5. 보낸 기록
  * ========================================================= */
-const CH = { sms: '단문 문자', lms: '장문 문자', mms: '사진 문자', kakao: '카카오톡', phone_app: '폰 문자앱' };
+const CH = { sms: '단문 문자', lms: '장문 문자', mms: '사진 문자', kakao: '카카오톡', phone_app: '폰 문자앱', mail: '📮 우편' };
 function drawHistory() {
-  body().innerHTML = `<p class="hint">누구에게 언제 무엇을 보냈는지 남습니다. 줄을 누르면 받은 분 목록이 나옵니다.</p>
+  body().innerHTML = `<p class="hint">문자와 우편을 누구에게 언제 무엇을 보냈는지 남습니다. "받은 분"을 누르면 목록이 나옵니다.</p>
     <div class="tbl-wrap"><table><thead><tr><th>보낸 날</th><th>홍보물</th><th>방식</th><th class="num">성공</th><th class="num">실패</th><th></th></tr></thead><tbody>${D.sends.length ? D.sends.map((s) => `<tr><td>${dot(s.created_at)} ${String(new Date(s.created_at).toTimeString()).slice(0, 5)}</td><td>${esc(s.promo_title || '(문구만)')}${s.is_test ? ' <span class="status st-quote">테스트</span>' : ''}</td><td>${CH[s.channel] || esc(s.channel)}</td><td class="num">${s.ok}</td><td class="num">${s.fail}</td><td><button class="mini" type="button" data-hs="${s.id}">받은 분</button></td></tr>`).join('') : '<tr><td colspan="6" class="empty">아직 보낸 기록이 없습니다.</td></tr>'}</tbody></table></div>`;
   root.querySelectorAll('[data-hs]').forEach((b) => {
     b.onclick = async () => {
       const r = await sb.from('promo_sends').select('*').eq('id', b.dataset.hs).single();
       if (r.error) return oops('불러오지 못했습니다.', r.error);
       const s = r.data;
+      if (s.channel === 'mail') {
+        modal(`<h3>📮 ${esc(s.promo_title || '우편')} · ${dot(s.created_at)}</h3><p class="hint" style="margin:0">${(s.recipients || []).length}곳에 보냄</p><ul class="sl-hist">${(s.recipients || []).map((x) => `<li><span><b>${esc(x.name || '')}</b> <span class="hint">${esc(x.address || '')}</span></span><span class="status ${x.called ? 'st-sent' : 'st-quote'}">${x.called ? '전화 완료' : '전화 전'}</span></li>`).join('')}</ul><button class="btn btn-primary" data-close>닫기</button>`);
+        return;
+      }
       modal(`<h3>${esc(s.promo_title || '문구만')} · ${dot(s.created_at)}</h3><div class="sl-phone"><div class="sl-bubble">${esc(s.text || '')}</div></div><ul class="sl-hist">${(s.recipients || []).map((x) => `<li><span>${esc(x.name || '')} <span class="hint">${esc(tel(x.phone))}</span></span><span class="status ${x.ok ? 'st-sent' : 'st-new'}">${x.ok ? '성공' : esc(x.error || '실패')}</span></li>`).join('')}</ul><button class="btn btn-primary" data-close>닫기</button>`);
     };
   });
@@ -770,8 +922,10 @@ async function refreshBadge() {
     if (a.error || b.error) return;   // 자료표가 없거나 로그인 전
     web = a.count || 0; need = b.count || 0;
   }
-  setBadge(document.getElementById('sales-badge'), web + need);
+  const calls = D.loaded ? callDue().length : 0;
+  setBadge(document.getElementById('sales-badge'), web + need + calls);
   setBadge(root && root.querySelector('#sl-web'), web);
+  setBadge(root && root.querySelector('#sl-call'), calls);
 }
 function markWebSeen() {
   const newest = D.managers.filter((m) => m.source === 'web').map((m) => m.created_at).sort().pop();
