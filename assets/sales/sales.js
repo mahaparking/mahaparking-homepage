@@ -93,7 +93,7 @@ async function load() {
   ]);
   const err = r.find((x) => x.error);
   if (err) {
-    root.innerHTML = `<div class="notice"><b>영업·홍보 자료표가 아직 준비되지 않았습니다.</b>
+    root.innerHTML = `<div class="notice"><b>고객사 리스트 자료표가 아직 준비되지 않았습니다.</b>
       <span>Supabase → SQL Editor 에서 저장소의 <code>supabase/sales.sql</code> 내용을 한 번 실행해 주세요. 실행 후 이 화면을 새로고침하면 됩니다.</span>
       <span class="hint">${esc(err.error.message)}</span><div><button class="btn btn-line btn-sm" type="button" id="sl-retry">↻ 다시 불러오기</button></div></div>`;
     root.querySelector('#sl-retry').onclick = load;
