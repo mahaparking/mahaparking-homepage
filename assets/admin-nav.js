@@ -37,13 +37,26 @@
   [].forEach.call(nav.querySelectorAll('button[data-tab]'), function (b) {
     b.addEventListener('click', function () { menuOpen(false); setTimeout(function () { sync(); window.scrollTo(0, 0); }, 0); });
   });
-  /* 묶음이 접혀 있어도 새 견적 요청 등 알림이 보이도록 묶음 이름 옆에 빨간 점 */
+  /* 묶음 이름 옆에 새 알림 개수 (안의 메뉴 배지 합계 · 숫자가 아닌 'N' 은 1개로) */
+  groups.forEach(function (g) {
+    var h = g.querySelector('.adm-grp-h'), i = h.querySelector('i');
+    var em = document.createElement('em'); em.className = 'grp-badge hidden'; h.insertBefore(em, i);
+  });
   function dots() {
     groups.forEach(function (g) {
-      var on = [].some.call(g.querySelectorAll('.adm-grp-items .badge'), function (b) { return b.textContent.trim() && !b.classList.contains('hidden'); });
-      g.querySelector('.adm-grp-h').classList.toggle('has-new', on);
+      var n = 0;
+      [].forEach.call(g.querySelectorAll('.adm-grp-items .badge'), function (b) {
+        var t = b.textContent.trim();
+        if (!t || b.classList.contains('hidden')) return;
+        n += /^\d+$/.test(t) ? +t : 1;
+      });
+      var em = g.querySelector('.grp-badge'), t = n > 99 ? '99+' : String(n);
+      if (em.textContent === t) return;   // 바뀔 때만 고쳐야 감시가 다시 돌지 않음
+      em.textContent = t; em.classList.toggle('hidden', !n);
+      em.setAttribute('aria-label', '새 알림 ' + n + '개');
     });
   }
-  new MutationObserver(function () { sync(); dots(); }).observe(nav, { subtree: true, attributes: true, childList: true, characterData: true, attributeFilter: ['aria-selected', 'class'] });
+  var mo = new MutationObserver(function () { sync(); dots(); });
+  [].forEach.call(nav.querySelectorAll('.adm-grp-items'), function (box) { mo.observe(box, { subtree: true, attributes: true, childList: true, characterData: true, attributeFilter: ['aria-selected', 'class'] }); });
   sync(); dots();
 })();

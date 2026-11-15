@@ -107,10 +107,12 @@ async function load() {
 
 /* ---------- 화면 틀 ---------- */
 function mount() {
-  root.innerHTML = `<div class="sl-subs" role="tablist">${SUBS.map(([k, t]) => `<button type="button" role="tab" data-sub="${k}" aria-selected="${k === V.sub}">${t}${k === 'sites' ? '<span class="badge hidden" id="sl-need"></span>' : ''}</button>`).join('')}</div><div id="sl-body"></div>`;
+  root.innerHTML = `<div class="sl-subs" role="tablist">${SUBS.map(([k, t]) => `<button type="button" role="tab" data-sub="${k}" aria-selected="${k === V.sub}">${t}${k === 'sites' ? '<span class="badge hidden" id="sl-need"></span>' : ''}${k === 'managers' ? '<span class="badge hidden" id="sl-web"></span>' : ''}</button>`).join('')}</div><div id="sl-body"></div>`;
   root.querySelectorAll('[data-sub]').forEach((b) => { b.onclick = () => { V.sub = b.dataset.sub; mount(); }; });
   const need = D.sites.filter((s) => s.need_new_manager).length;
   const nb = root.querySelector('#sl-need'); nb.textContent = need || ''; nb.classList.toggle('hidden', !need);
+  if (V.sub === 'managers') { if (!V.webSeen) V.webSeen = seenAt(); markWebSeen(); }
+  refreshBadge();
   ({ managers: drawManagers, sites: drawSites, promos: drawPromos, send: drawSend, history: drawHistory, settings: drawSettings })[V.sub]();
 }
 const body = () => root.querySelector('#sl-body');
@@ -148,7 +150,7 @@ function drawManagers() {
         <div class="sl-card-h"><b>${esc(m.name)}</b><span class="hint">${esc(m.title || '')}</span>
           ${m.opt_out ? '<span class="status st-new">수신거부</span>' : m.consent ? '<span class="status st-sent">수신 동의</span>' : '<span class="status st-quote">동의 전</span>'}
           ${m.worked_with ? '<span class="status sl-worked">함께 일함</span>' : ''}
-          ${m.source === 'web' ? '<span class="status st-quote">홈페이지 신청</span>' : ''}</div>
+          ${m.source === 'web' ? `<span class="status ${V.webSeen && m.created_at > V.webSeen ? 'st-new">새 신청' : 'st-quote">홈페이지 신청'}</span>` : ''}</div>
         <div class="sl-line">🏢 ${esc(curSiteText(m.id) || '근무지 미등록')}${[...new Set(mgrKinds(m.id))].map((k) => ` <span class="status sl-kind">${k}</span>`).join('')}</div>
         <div class="sl-line">${m.mobile ? `📱 <a href="tel:${digits(m.mobile)}">${esc(tel(m.mobile))}</a>` : '<span class="hint">휴대폰 없음</span>'}</div>
         <div class="sl-btns"><button class="btn btn-line btn-sm" type="button" data-open="${m.id}">자세히 · 수정</button><button class="btn btn-line btn-sm" type="button" data-move="${m.id}">근무지 변경</button></div>
@@ -715,6 +717,35 @@ function drawSettings() {
   };
 }
 
+/* ---------- 알림: 홈페이지 '소식 받기' 새 신청 + 새 담당자 확인이 필요한 곳 ---------- */
+const SEEN_KEY = 'maha_sales_seen';
+const seenAt = () => { try { return localStorage.getItem(SEEN_KEY) || '1970-01-01T00:00:00Z'; } catch (e) { return '1970-01-01T00:00:00Z'; } };
+function setBadge(el, n) { if (!el) return; el.textContent = n || ''; el.classList.toggle('hidden', !n); }
+async function refreshBadge() {
+  let web = 0, need = 0;
+  if (D.loaded) {
+    web = D.managers.filter((m) => m.source === 'web' && m.created_at > seenAt()).length;
+    need = D.sites.filter((x) => x.need_new_manager).length;
+  } else {
+    const [a, b] = await Promise.all([
+      sb.from('managers').select('id', { count: 'exact', head: true }).eq('source', 'web').gt('created_at', seenAt()),
+      sb.from('sites').select('id', { count: 'exact', head: true }).eq('need_new_manager', true),
+    ]);
+    if (a.error || b.error) return;   // 자료표가 없거나 로그인 전
+    web = a.count || 0; need = b.count || 0;
+  }
+  setBadge(document.getElementById('sales-badge'), web + need);
+  setBadge(root && root.querySelector('#sl-web'), web);
+}
+function markWebSeen() {
+  const newest = D.managers.filter((m) => m.source === 'web').map((m) => m.created_at).sort().pop();
+  if (newest && newest > seenAt()) { try { localStorage.setItem(SEEN_KEY, newest); } catch (e) {} }
+}
+
 /* ---------- 시작: 탭을 처음 열 때 불러오기 ---------- */
 const tabBtn = document.querySelector('#admin-tabs [data-tab="sales"]');
 if (tabBtn) tabBtn.addEventListener('click', () => { if (!D.loaded) load(); });
+// 로그인 후 관리자 화면이 보이면 알림 개수 확인, 이후 5분마다
+const startBadge = () => { const v = document.getElementById('view-admin'); if (v && !v.classList.contains('hidden')) { refreshBadge(); return true; } return false; };
+if (!startBadge()) { const t = setInterval(() => { if (startBadge()) clearInterval(t); }, 1000); }
+setInterval(() => { if (!document.hidden) { if (D.loaded) { Promise.all([sb.from('managers').select('*').order('created_at', { ascending: false }), sb.from('sites').select('*').order('name')]).then(([m, x]) => { if (!m.error) D.managers = m.data; if (!x.error) D.sites = x.data; refreshBadge(); }); } else refreshBadge(); } }, 5 * 60 * 1000);
