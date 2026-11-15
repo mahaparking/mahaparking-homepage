@@ -57,7 +57,7 @@
     $('new-badge').textContent = n || ''; $('new-badge').classList.toggle('hidden', !n);
     if (tab === 'requests') drawRequests();
     if (tab === 'quote') drawQuote();
-    if (tab === 'caseup' || tab === 'shot') drawCaseAdmin();
+    if (tab === 'caseup') drawCaseAdmin();
     if (tab === 'prices') drawPrices();
     if (tab === 'stats') drawStats();
     if (tab === 'market') drawMarket();
@@ -449,6 +449,16 @@
     Promise.all(fs.map(function (f) { return shrinkToBlob(f, 1600); })).then(function (r) { kPhotos = kPhotos.concat(r.filter(Boolean)); drawK(); $('k-msg').textContent = ''; });
   });
   function drawK() { drawThumbs('k-thumbs', kPhotos, drawK); }
+  /* 현장샷(hyunjangshot.js)에서 "이 사진으로 시공사례 올리기" → 사진·글을 채워서 이 탭 열기
+   * d = { title, area, work_type, work_date, description, result, photos: [{ blob, url }] } */
+  window.mahaPrefillCase = function (d) {
+    $('k-title').value = d.title || ''; $('k-area').value = d.area || '';
+    if (CASE_TYPES.indexOf(d.work_type) >= 0) $('k-type').value = d.work_type;
+    $('k-date').value = d.work_date || today(); $('k-desc').value = d.description || ''; $('k-result').value = d.result || '';
+    kPhotos = (d.photos || []).slice(0, 8); drawK(); $('k-msg').textContent = '';
+    $('k-from-shot').classList.remove('hidden');
+    tab = 'caseup'; render(); window.scrollTo(0, 0);
+  };
   $('case-form').addEventListener('submit', function (e) {
     e.preventDefault();
     var form = this, btn = form.querySelector('button[type=submit]');
@@ -464,7 +474,7 @@
     }).then(function (r) {
       btn.disabled = false;
       if (r.error) throw r.error;
-      D.cases.unshift(r.data); form.reset(); $('k-date').value = today(); kPhotos = []; drawK(); drawCaseAdmin();
+      D.cases.unshift(r.data); form.reset(); $('k-date').value = today(); kPhotos = []; drawK(); drawCaseAdmin(); $('k-from-shot').classList.add('hidden');
       $('k-msg').textContent = '홈페이지에 올렸습니다.';
     }).catch(function (err) { btn.disabled = false; $('k-msg').textContent = ''; fail('시공사례를 올리지 못했습니다.', err); });
   });
@@ -486,10 +496,6 @@
       });
     };
   }
-  /* 현장 기록(hyunjangshot.js)에서 시공사례를 올린 뒤 목록 새로고침 */
-  window.mahaReloadCases = function () {
-    sb.from('cases').select('*').order('work_date', { ascending: false, nullsFirst: false }).order('created_at', { ascending: false }).then(function (r) { if (!r.error) { D.cases = r.data || []; drawCaseAdmin(); } });
-  };
   function drawCaseAdmin() {
     $('case-body').innerHTML = D.cases.length ? D.cases.map(function (c) {
       return '<tr><td>' + dot(c.work_date) + '</td><td><b>' + esc(c.title) + '</b></td><td>' + esc(c.area) + '</td><td>' + esc(c.work_type) + '</td><td>' + (c.photos ? c.photos.length : 0) + '장</td>' +

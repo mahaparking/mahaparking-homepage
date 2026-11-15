@@ -1,6 +1,6 @@
-/* 현장 기록 — 관리자 화면의 "현장 기록" 탭 (예전 '시공사례 올리기' + '현장샷')
- * 사진(작업 전·중·후) → 포인트 지정 → 작업 정보 → AI 글쓰기 한 번
- *   → 홈페이지 시공사례 올리기 + 쇼츠 영상 + 블로그 글
+/* 현장샷 — 관리자 화면의 "현장샷" 탭
+ * 사진(작업 전·중·후) → 포인트 지정 → 작업 정보 → AI 글쓰기 → 쇼츠 영상 + 블로그 글
+ * AI가 홈페이지 시공사례 글도 함께 써 두고, "이 사진으로 시공사례 올리기"로 시공사례 탭에 넘겨줌
  * 영상은 이 휴대폰(브라우저) 안에서 만들어집니다. 서버 비용 없음.
  */
 import { renderShorts, drawPreview } from './shorts-engine.js';
@@ -33,7 +33,6 @@ const FIXED = {
 const S = {
   photos: { before: [], during: [], after: [] }, // { id, file, blob, url, focus, zoom, mark }
   info: { region: '', site_type: '', work_type: '', memo: '', revisit: false, consult: '현장 방문', date: today() },
-  kase: null, // 홈페이지 시공사례 { title, area, work_type, work_date, description, result, pick: Set(사진 id), main: 사진 id, posted: id }
   result: null, // AI 결과
   scenes: [], // [{ photo, subtitle }]
   headline: { small: '', big: '' },
@@ -189,7 +188,6 @@ async function runAI() {
     const j = await r.json().catch(() => ({}));
     if (!r.ok) throw new Error(j.error || `오류 ${r.status}`);
     S.result = j.result;
-    initCase();
     const sh = j.result.shorts || {};
     S.headline = { small: sh.headline_small || '', big: sh.headline_big || '' };
     S.scenes = photos.map((p, i) => {
@@ -209,98 +207,26 @@ async function runAI() {
   }
 }
 
-/* ---------- 결과: 홈페이지 시공사례 ---------- */
-function initCase() {
-  const c = (S.result && S.result.case) || {};
-  const photos = allPhotos();
-  const after = photos.filter((p) => p.stage === 'after');
-  const main = (after[0] || photos[photos.length - 1] || {}).id;
-  // 사진이 8장 넘으면: 대표(작업 후) 먼저, 그다음 순서대로
-  const order = [main].concat(photos.map((p) => p.id).filter((id) => id !== main));
-  S.kase = {
-    title: c.title || '', area: S.info.region || '', work_type: toCaseType(S.info.work_type), work_date: S.info.date || today(),
-    description: c.description || '', result: c.result || '', pick: new Set(order.slice(0, MAX_CASE_PHOTOS)), main, posted: null,
-  };
-}
-function drawCase() {
+/* ---------- 결과: 홈페이지 시공사례로 넘기기 ---------- */
+function drawCaseLink() {
   const box = root.querySelector('#shot-case');
-  if (!box || !S.kase) return;
-  const K = S.kase, photos = allPhotos();
-  const STN = { before: '전', during: '중', after: '후' };
-  box.innerHTML = K.posted
-    ? `<div class="notice ok"><b>홈페이지 시공사례에 올렸습니다 ✓</b><span>아래 "올린 시공사례" 목록에서 공개 여부·사진 순서를 바꿀 수 있습니다.</span><a class="btn btn-line btn-sm" href="/#cases" target="_blank" rel="noopener" style="justify-self:start">홈페이지에서 보기</a></div>`
-    : `<p class="hint" style="margin:0 0 10px">AI가 쓴 초안입니다. 고친 뒤 올려 주세요. 사진은 최대 ${MAX_CASE_PHOTOS}장, <b>대표</b>로 고른 사진이 카드 맨 앞에 나옵니다.</p>
-    <div style="display:grid;gap:12px;max-width:760px">
-      <label class="f" for="kc-title">제목<input id="kc-title" value="${esc(K.title)}"></label>
-      <div class="row3">
-        <label class="f" for="kc-area">지역<input id="kc-area" value="${esc(K.area)}"></label>
-        <label class="f" for="kc-type">작업 종류<select id="kc-type">${CASE_TYPES.map((t) => `<option${t === K.work_type ? ' selected' : ''}>${t}</option>`).join('')}</select></label>
-        <label class="f" for="kc-date">작업일<input id="kc-date" type="date" value="${esc(K.work_date)}"></label>
-      </div>
-      <label class="f" for="kc-desc">짧은 설명<textarea id="kc-desc">${esc(K.description)}</textarea></label>
-      <label class="f" for="kc-result">결과 한 줄<input id="kc-result" value="${esc(K.result)}"></label>
-      <div class="f"><span>올릴 사진 <span class="hint" id="kc-n"></span></span>
-        <div class="kc-photos">${photos.map((p) => `<figure class="kc-ph${K.pick.has(p.id) ? ' on' : ''}">
-          <img src="${p.url}" alt="">
-          <span class="kc-stage">${STN[p.stage]}</span>
-          <label class="kc-pick"><input type="checkbox" data-kpick="${p.id}"${K.pick.has(p.id) ? ' checked' : ''}> 올리기</label>
-          <label class="kc-main"><input type="radio" name="kc-main" data-kmain="${p.id}"${K.main === p.id ? ' checked' : ''}> 대표</label>
-        </figure>`).join('')}</div>
-      </div>
-      <div class="btns"><button class="btn btn-primary" type="button" id="kc-post">홈페이지 시공사례에 올리기</button></div>
-      <p class="hint" id="kc-msg" role="status"></p>
-    </div>`;
-  if (K.posted) return;
-  const q = (x) => box.querySelector(x);
-  const count = () => { q('#kc-n').textContent = `(${K.pick.size} / ${MAX_CASE_PHOTOS}장)`; };
-  [['#kc-title', 'title'], ['#kc-area', 'area'], ['#kc-desc', 'description'], ['#kc-result', 'result']].forEach(([id, k]) => { q(id).oninput = (e) => { K[k] = e.target.value; }; });
-  q('#kc-type').onchange = (e) => { K.work_type = e.target.value; };
-  q('#kc-date').onchange = (e) => { K.work_date = e.target.value; };
-  box.querySelectorAll('[data-kpick]').forEach((c) => {
-    c.onchange = () => {
-      const id = +c.dataset.kpick;
-      if (c.checked && K.pick.size >= MAX_CASE_PHOTOS) { c.checked = false; q('#kc-msg').textContent = `사진은 ${MAX_CASE_PHOTOS}장까지 올릴 수 있습니다.`; return; }
-      if (c.checked) K.pick.add(id); else K.pick.delete(id);
-      if (!c.checked && K.main === id) K.main = [...K.pick][0];
-      drawCase();
-    };
-  });
-  box.querySelectorAll('[data-kmain]').forEach((r) => {
-    r.onchange = () => {
-      const id = +r.dataset.kmain;
-      if (!K.pick.has(id)) { if (K.pick.size >= MAX_CASE_PHOTOS) K.pick.delete([...K.pick].pop()); K.pick.add(id); }
-      K.main = id; drawCase();
-    };
-  });
-  q('#kc-post').onclick = postCase;
-  count();
-}
-async function postCase() {
-  const K = S.kase, msg = root.querySelector('#kc-msg'), btn = root.querySelector('#kc-post');
-  if (!K.title.trim()) { msg.textContent = '제목을 적어 주세요.'; return; }
-  const photos = allPhotos();
-  const list = [K.main].concat(photos.map((p) => p.id).filter((id) => id !== K.main)).filter((id) => K.pick.has(id)).map((id) => photos.find((p) => p.id === id)).filter(Boolean);
-  if (!list.length) { msg.textContent = '올릴 사진을 한 장 이상 골라 주세요.'; return; }
-  btn.disabled = true; msg.textContent = '사진을 올리고 있습니다...';
-  const folder = `${today().slice(0, 7)}/${rid()}`;
-  const paths = [];
-  try {
-    for (let i = 0; i < list.length; i += 1) {
-      const path = `${folder}/${i + 1}.jpg`;
-      const r = await sb.storage.from('case-photos').upload(path, list[i].blob, { contentType: 'image/jpeg' });
-      if (r.error) throw r.error;
-      paths.push(path);
-    }
-    const r = await sb.from('cases').insert({ title: K.title.trim(), area: K.area.trim(), work_type: K.work_type, work_date: K.work_date || null, description: K.description.trim(), result: K.result.trim(), photos: paths }).select().single();
-    if (r.error) throw r.error;
-    K.posted = r.data.id;
-    if (window.mahaReloadCases) window.mahaReloadCases();
-    drawCase();
-  } catch (e) {
-    if (paths.length) await sb.storage.from('case-photos').remove(paths);
-    btn.disabled = false; msg.textContent = '';
-    modal(`<h3>시공사례를 올리지 못했습니다</h3><p class="hint">${esc(e.message || '')}</p><button class="btn btn-primary" data-close>확인</button>`);
-  }
+  if (!box) return;
+  const c = (S.result && S.result.case) || {};
+  box.innerHTML = `<div class="notice"><b>홈페이지 시공사례 글도 써 두었습니다</b>
+    ${c.title ? `<span>“${esc(c.title)}”${c.result ? ` · ${esc(c.result)}` : ''}</span>` : ''}
+    <span class="hint">누르면 시공사례 탭으로 넘어가면서 사진(작업 후 사진이 대표)과 글이 채워집니다. 확인 후 올리시면 됩니다.</span>
+    <button class="btn btn-primary btn-sm" type="button" id="shot-tocase" style="justify-self:start">이 사진으로 시공사례 올리기 →</button></div>`;
+  box.querySelector('#shot-tocase').onclick = () => {
+    if (!window.mahaPrefillCase) return;
+    const photos = allPhotos();
+    const main = photos.filter((p) => p.stage === 'after')[0] || photos[photos.length - 1];
+    const order = [main].concat(photos.filter((p) => p !== main)).filter(Boolean).slice(0, MAX_CASE_PHOTOS);
+    window.mahaPrefillCase({
+      title: c.title || '', area: S.info.region || '', work_type: toCaseType(S.info.work_type), work_date: S.info.date || today(),
+      description: c.description || '', result: c.result || '',
+      photos: order.map((p) => ({ blob: p.blob, url: p.url })),
+    });
+  };
 }
 
 /* ---------- 4. 결과: 쇼츠 ---------- */
@@ -311,7 +237,7 @@ function drawResult() {
     ? `<div class="notice"><b>확인해 주세요</b><ul style="margin:6px 0 0;padding-left:18px">${checks.map((c) => `<li>${esc(c)}</li>`).join('')}</ul></div>` : '';
   root.querySelector('#sh-small').value = S.headline.small;
   root.querySelector('#sh-big').value = S.headline.big;
-  drawCase();
+  drawCaseLink();
   drawScenes();
   drawStyle();
   root.querySelector('#shot-blog').value = buildBlog();
@@ -533,16 +459,16 @@ function savePhotos() {
 /* ---------- 화면 틀 ---------- */
 function mount() {
   root.innerHTML = `
-  <p class="hint">현장 사진을 한 번만 넣고 메모를 적으면, AI가 <b>홈페이지 시공사례 · 쇼츠 자막 · 블로그 글</b>을 한꺼번에 씁니다. 필요한 것만 골라서 쓰시면 됩니다.</p>
+  <p class="hint">현장 사진을 고르고 메모만 적으면, AI가 쇼츠 자막과 블로그 글을 쓰고 이 휴대폰에서 바로 쇼츠 영상을 만듭니다. 홈페이지 시공사례 글도 함께 써 두니, 버튼 하나로 시공사례 탭에 넘길 수 있습니다.</p>
   <div class="shot-step"><h3><span class="shot-step-no">1</span> 사진 넣기</h3><p class="hint" id="shot-count"></p><div id="shot-stages" class="shot-stages"></div></div>
   <div class="shot-step"><h3><span class="shot-step-no">2</span> 작업 정보</h3><div id="shot-info" style="display:grid;gap:14px;max-width:760px"></div></div>
-  <div class="btns" style="margin-top:18px"><button class="btn btn-cta" type="button" id="shot-ai">AI로 시공사례 · 쇼츠 · 블로그 글 만들기</button></div>
+  <div class="btns" style="margin-top:18px"><button class="btn btn-cta" type="button" id="shot-ai">AI로 쇼츠 · 블로그 글 만들기</button></div>
   <p class="hint" id="shot-ai-msg" role="status" style="margin-top:10px"></p>
 
   <div id="shot-result" class="hidden">
     <div id="shot-checks" style="margin-top:20px"></div>
-    <div class="shot-step"><h3><span class="shot-step-no">3</span> 홈페이지 시공사례</h3><div id="shot-case"></div></div>
-    <div class="shot-step"><h3><span class="shot-step-no">4</span> 쇼츠</h3>
+    <div id="shot-case" style="margin-top:14px"></div>
+    <div class="shot-step"><h3><span class="shot-step-no">3</span> 쇼츠</h3>
       <div class="shot-res-grid">
         <div class="shot-pv-wrap"><canvas id="shot-pv" width="360" height="640" aria-label="선택한 장면 미리보기"></canvas><span class="hint">장면을 누르면 미리보기가 바뀝니다</span></div>
         <div style="display:grid;gap:12px;align-content:start;min-width:0">
@@ -570,7 +496,7 @@ function mount() {
       <progress id="shot-progress" class="hidden shot-progress" max="1" value="0"></progress>
       <div id="shot-video" style="margin-top:12px"></div>
     </div>
-    <div class="shot-step"><h3><span class="shot-step-no">5</span> 블로그 글</h3>
+    <div class="shot-step"><h3><span class="shot-step-no">4</span> 블로그 글</h3>
       <p class="hint">마하파킹 블로그 고정 구성(의문문 제목 → 요약 → 회사 소개 · 약속 → 목차 → 시공 이야기 → 문의 안내)으로 썼습니다. 여기서 바로 고칠 수 있습니다.</p>
       <p class="hint" id="shot-kw"></p>
       <textarea id="shot-blog" class="shot-blog" aria-label="블로그 글"></textarea>
@@ -586,11 +512,11 @@ function mount() {
   root.querySelector('#shot-copy').onclick = copyBlog;
   root.querySelector('#shot-photos').onclick = savePhotos;
   root.querySelector('#shot-new').onclick = () => {
-    modal('<h3>새 현장을 시작할까요?</h3><p>지금 사진과 글은 지워집니다. (홈페이지에 올린 시공사례는 그대로 남습니다) 영상과 글을 먼저 저장·복사해 두세요.</p><div class="btns"><button class="btn btn-danger" id="do-new">새로 시작</button><button class="btn btn-line" data-close>취소</button></div>');
+    modal('<h3>새 현장을 시작할까요?</h3><p>지금 사진과 글은 저장되지 않고 지워집니다. 영상과 글을 먼저 저장·복사해 두세요. (시공사례 탭에 올린 것은 그대로 남습니다)</p><div class="btns"><button class="btn btn-danger" id="do-new">새로 시작</button><button class="btn btn-line" data-close>취소</button></div>');
     document.getElementById('do-new').onclick = () => {
       S.photos = { before: [], during: [], after: [] };
       S.info = { region: '', site_type: '', work_type: '', memo: '', revisit: false, consult: '현장 방문', date: today() };
-      S.result = null; S.kase = null; S.scenes = []; S.headline = { small: '', big: '' }; pvScenes = new Map();
+      S.result = null; S.scenes = []; S.headline = { small: '', big: '' }; pvScenes = new Map();
       closeModal(); mount(); window.scrollTo(0, 0);
     };
   };

@@ -85,15 +85,6 @@
 .shot-voice{display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap}
 .shot-voice label.f{flex:1 1 180px}
 .shot-voice .btn{min-height:44px}
-.kc-photos{display:flex;gap:10px;flex-wrap:wrap}
-.kc-ph{margin:0;position:relative;width:112px;border:2px solid var(--line);border-radius:12px;overflow:hidden;background:#fff;opacity:.55}
-.kc-ph.on{border-color:var(--brand);opacity:1}
-.kc-ph img{width:100%;height:96px;object-fit:cover;display:block}
-.kc-stage{position:absolute;left:4px;top:4px;background:rgba(0,0,0,.65);color:#fff;font-size:11px;font-weight:700;padding:1px 6px;border-radius:5px}
-.kc-pick,.kc-main{display:flex;gap:5px;align-items:center;font-size:12.5px;font-weight:700;padding:4px 6px;cursor:pointer}
-.kc-pick input,.kc-main input{width:17px;height:17px;margin:0}
-.case-direct{border:1px solid var(--line);border-radius:12px;padding:12px 16px;background:#F7F9FB}
-.case-direct summary{cursor:pointer}
 /* 영업·홍보 */
 .sl-subs{display:flex;gap:4px;flex-wrap:wrap;border-bottom:2px solid var(--line);margin:14px 0 16px}
 .sl-subs button{border:0;background:none;padding:10px 14px;font-weight:700;font-size:15px;color:var(--muted);cursor:pointer;border-bottom:3px solid transparent;margin-bottom:-2px;display:inline-flex;gap:6px;align-items:center}
@@ -169,7 +160,8 @@
     <div class="tabs tab-groups" role="tablist" id="admin-tabs">
       <div class="tab-group"><span class="tab-group-name">홍보</span>
         <button role="tab" data-tab="sales">영업·홍보</button>
-        <button role="tab" data-tab="shot">현장 기록 (시공사례·쇼츠·블로그)</button>
+        <button role="tab" data-tab="caseup">시공사례</button>
+        <button role="tab" data-tab="shot">현장샷 (쇼츠·블로그)</button>
       </div>
       <div class="tab-group"><span class="tab-group-name">견적서</span>
         <button role="tab" data-tab="requests">견적 요청함 <span class="badge" id="new-badge"></span></button>
@@ -262,14 +254,11 @@
       <div id="sales-root"></div>
     </div>
 
-    <!-- 현장 기록: 사진 한 번 → 홈페이지 시공사례 + 쇼츠 영상 + 블로그 글 (assets/shot/hyunjangshot.js)
-         아래 "직접 올리기"·"올린 시공사례" 목록은 assets/admin.js 가 그립니다 -->
-    <div class="card panel hidden" data-panel="shot">
-      <h2>현장 기록</h2>
-      <div id="shot-root"></div>
-      <details class="case-direct" style="margin-top:30px">
-        <summary><b>AI 없이 홈페이지 시공사례만 직접 올리기</b> <span class="hint">(사진과 두세 줄만 쓰면 바로 게시)</span></summary>
-        <div style="margin-top:14px">
+    <!-- 시공사례 올리기 (assets/admin.js) — 현장샷에서 "이 사진으로 시공사례 올리기"를 누르면 사진·글이 채워져 넘어옴 -->
+    <div class="card panel hidden" data-panel="caseup">
+      <h2>시공사례 올리기</h2>
+      <p class="hint">사진을 올리고 두세 줄만 쓰면 홈페이지 시공사례에 바로 추가됩니다. 첫 번째 사진이 대표 사진이 됩니다. 현장샷에서 넘어오면 사진과 AI가 쓴 글이 미리 채워져 있습니다.</p>
+      <div class="notice hidden" id="k-from-shot" style="margin-bottom:14px"><b>현장샷에서 넘어온 사진과 글입니다.</b><span>사진 순서·대표 사진을 확인하고 글을 고친 뒤 "홈페이지에 올리기"를 눌러 주세요.</span></div>
       <form id="case-form" style="display:grid;gap:14px;max-width:760px" novalidate>
         <label class="f" for="k-photo">현장 사진 <span class="hint">(작업 전 · 후, 최대 8장)</span><input id="k-photo" type="file" accept="image/*" multiple></label>
         <div class="thumbs" id="k-thumbs"></div>
@@ -284,10 +273,14 @@
         <div class="btns"><button class="btn btn-primary" type="submit">홈페이지에 올리기</button></div>
         <p class="hint" id="k-msg" role="status"></p>
       </form>
-        </div>
-      </details>
       <h3 style="font-size:17px;margin:30px 0 10px">올린 시공사례</h3>
       <div class="tbl-wrap"><table><thead><tr><th>작업일</th><th>제목</th><th>지역</th><th>종류</th><th>사진</th><th>홈페이지 공개</th><th></th></tr></thead><tbody id="case-body"></tbody></table></div>
+    </div>
+
+    <!-- 현장샷: 사진 → 쇼츠 영상 + 블로그 글 (assets/shot/hyunjangshot.js) -->
+    <div class="card panel hidden" data-panel="shot">
+      <h2>현장샷</h2>
+      <div id="shot-root"></div>
     </div>
 
     <!-- 방문 통계 -->
