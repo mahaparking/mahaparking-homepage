@@ -41,6 +41,7 @@
   function show(view, anchor) {
     if (VIEWS.indexOf(view) < 0) view = 'home';
     track(view);
+    if (view === 'home') setTimeout(ccUpdate, 60);
     VIEWS.forEach(function (v) { $('view-' + v).classList.toggle('hidden', v !== view); });
     [].forEach.call(document.querySelectorAll('#menu button'), function (b) {
       if (b.dataset.go === view && !b.dataset.anchor) b.setAttribute('aria-current', 'page'); else b.removeAttribute('aria-current');
@@ -91,7 +92,28 @@
     return '<article class="card case"><div class="case-photo"' + (c.photos && c.photos.length ? ' data-view="' + c.id + '" data-i="0" style="cursor:zoom-in"' : '') + '>' + ph + '</div><div class="case-body"><div class="meta">' + (c.work_type ? '<span>' + esc(c.work_type) + '</span>' : '') + (c.area ? '<span>' + esc(c.area) + '</span>' : '') + (c.work_date ? '<span class="date">' + dot(c.work_date) + '</span>' : '') + '</div><h3>' + esc(c.title) + '</h3><p>' + esc(c.description) + '</p>' + (c.result ? '<div class="result">' + esc(c.result) + '</div>' : '') + '</div>' + th + '</article>';
   }
   function renderHomeCases() {
-    $('home-cases').innerHTML = CASES.length ? CASES.slice(0, 3).map(function (c) { return caseCard(c, false); }).join('') : '<p class="hint">시공사례를 준비하고 있습니다. 네이버 블로그에서 먼저 보실 수 있습니다.</p>';
+    var list = CASES.slice(0, 12);
+    $('home-cases').innerHTML = list.length ? list.map(function (c) { return caseCard(c, false); }).join('') : '<p class="hint">시공사례를 준비하고 있습니다. 네이버 블로그에서 먼저 보실 수 있습니다.</p>';
+    ccUpdate();
+  }
+  /* 최근 시공사례: 좌우 화살표로 넘겨 보기 */
+  function ccStep() { var t = $('home-cases'), c = t.querySelector('.case'); return c ? c.getBoundingClientRect().width + 16 : t.clientWidth; }
+  function ccUpdate() {
+    var t = $('home-cases'); if (!t) return;
+    var cards = t.querySelectorAll('.case'), max = t.scrollWidth - t.clientWidth - 2;
+    $('cc-prev').disabled = t.scrollLeft <= 2;
+    $('cc-next').disabled = t.scrollLeft >= max;
+    if (!cards.length) { $('cc-count').textContent = ''; return; }
+    var step = ccStep(), first = Math.round(t.scrollLeft / step) + 1, shown = Math.max(1, Math.round(t.clientWidth / step));
+    var last = Math.min(cards.length, first + shown - 1);
+    $('cc-count').textContent = cards.length > shown ? (first === last ? first : first + '–' + last) + ' / ' + cards.length + '개 현장' : '';
+  }
+  if ($('home-cases')) {
+    $('cc-prev').onclick = function () { $('home-cases').scrollBy({ left: -ccStep(), behavior: 'smooth' }); };
+    $('cc-next').onclick = function () { $('home-cases').scrollBy({ left: ccStep(), behavior: 'smooth' }); };
+    var ccT; $('home-cases').addEventListener('scroll', function () { clearTimeout(ccT); ccT = setTimeout(ccUpdate, 60); });
+    $('home-cases').addEventListener('keydown', function (e) { if (e.key === 'ArrowRight') { e.preventDefault(); $('cc-next').click(); } if (e.key === 'ArrowLeft') { e.preventDefault(); $('cc-prev').click(); } });
+    window.addEventListener('resize', ccUpdate);
   }
   function renderCases() {
     var types = []; CASES.forEach(function (c) { if (c.work_type && types.indexOf(c.work_type) < 0) types.push(c.work_type); });
