@@ -35,6 +35,9 @@
     },
     "api/card-scan.js": {
       "maxDuration": 30
+    },
+    "api/calendar.js": {
+      "maxDuration": 30
     }
   }
 }

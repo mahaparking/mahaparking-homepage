@@ -11,7 +11,7 @@ const ST = {
 const COST_NAMES = ['자재비', '출장비', '파트너 인건비', '기타'];
 const SUBS = [['cal', '📅 작업 일정'], ['collect', '💰 수금 현황'], ['month', '📊 월별 합계']];
 const D = { works: [], quotes: [], sites: [], loaded: false };
-const V = { sub: 'cal', ym: today().slice(0, 7), day: '' };
+const V = { sub: 'cal', ym: today().slice(0, 7), day: '', lastChip: '', lastCell: '', lastAt: 0 };
 
 /* ---------- 도구 ---------- */
 const num = (v) => { const n = Number(String(v == null ? '' : v).replace(/[^\d.-]/g, '')); return isFinite(n) ? n : 0; };
@@ -52,7 +52,7 @@ async function load() {
 /* ---------- 화면 ---------- */
 function draw() {
   root.innerHTML = `<div class="wk-top"><div class="sl-subs" role="tablist" style="margin:0;flex:1">${SUBS.map(([k, t]) => `<button type="button" role="tab" data-sub="${k}" aria-selected="${k === V.sub}">${t}</button>`).join('')}</div>
-    <button class="btn btn-primary btn-sm" type="button" id="wk-add">+ 작업 추가</button></div><div id="wk-body"></div>`;
+    <button class="btn btn-primary btn-sm" type="button" id="wk-add">+ 작업 추가</button></div><p class="wk-note${V.note ? '' : ' hidden'}" id="wk-note" role="status">${esc(V.note || '')}</p><div id="wk-body"></div>`;
   root.querySelectorAll('[data-sub]').forEach((b) => { b.onclick = () => { V.sub = b.dataset.sub; draw(); }; });
   $('wk-add').onclick = () => edit(null, V.day ? { work_date: V.day } : null);
   if (V.sub === 'cal') drawCal();
@@ -73,7 +73,7 @@ function drawCal() {
   for (let d = 1; d <= days; d++) {
     const ds = `${V.ym}-${String(d).padStart(2, '0')}`, list = byDay[ds] || [], dow = (lead + d - 1) % 7;
     cells += `<button type="button" class="wk-cell${ds === t ? ' wk-today' : ''}${ds === V.day ? ' wk-sel' : ''}${dow === 0 ? ' wk-sun' : dow === 6 ? ' wk-sat' : ''}" data-day="${ds}" aria-label="${m}월 ${d}일 작업 ${list.length}건">
-      <span class="wk-d">${d}</span>${list.slice(0, 3).map((w) => `<span class="wk-chip ${(ST[w.status] || ST.planned)[1]}">${esc(w.start_time ? w.start_time + ' ' : '')}${esc(w.site_name || w.title)}</span>`).join('')}${list.length > 3 ? `<span class="wk-more">+${list.length - 3}</span>` : ''}${list.length ? `<span class="wk-dot">${list.length}</span>` : ''}</button>`;
+      <span class="wk-d">${d}</span>${list.slice(0, 3).map((w) => `<span class="wk-chip ${(ST[w.status] || ST.planned)[1]}" data-wid="${w.id}" title="두 번 누르면 이 작업 열기">${esc(w.start_time ? w.start_time + ' ' : '')}${esc(w.site_name || w.title)}</span>`).join('')}${list.length > 3 ? `<span class="wk-more">+${list.length - 3}</span>` : ''}${list.length ? `<span class="wk-dot">${list.length}</span>` : ''}</button>`;
   }
   const shown = (V.day ? inMonth.filter((w) => w.work_date === V.day) : inMonth).filter((w) => w.status !== 'canceled' || V.day);
   const undated = D.works.filter((w) => !w.work_date && w.status !== 'canceled');
@@ -87,7 +87,23 @@ function drawCal() {
   $('wk-prev').onclick = () => go(-1); $('wk-next').onclick = () => go(1);
   $('wk-now').onclick = () => { V.ym = today().slice(0, 7); V.day = ''; drawCal(); };
   if ($('wk-all')) $('wk-all').onclick = () => { V.day = ''; drawCal(); };
-  root.querySelectorAll('[data-day]').forEach((b) => { b.onclick = () => { V.day = V.day === b.dataset.day ? '' : b.dataset.day; drawCal(); }; });
+  root.querySelectorAll('[data-day]').forEach((b) => {
+    b.onclick = (e) => {
+      const day = b.dataset.day, chip = e.target.closest && e.target.closest('[data-wid]'), now = Date.now();
+      if (chip) {   // 작업을 두 번 누르면 그 작업 열기
+        const again = V.lastChip === chip.dataset.wid && now - V.lastAt < 450;
+        V.lastChip = chip.dataset.wid; V.lastAt = now;
+        if (again) { V.lastChip = ''; return edit(byId(D.works, chip.dataset.wid)); }
+        if (V.day !== day) { V.day = day; drawCal(); }
+        return;
+      }
+      if (!(byDay[day] || []).length) return edit(null, { work_date: day });   // 빈 날짜 → 바로 작업 입력
+      const again = V.lastCell === day && now - V.lastAt < 450;   // 작업 있는 날짜를 두 번 → 새 작업 입력
+      V.lastCell = day; V.lastAt = now;
+      if (again) { V.lastCell = ''; return edit(null, { work_date: day }); }
+      V.day = V.day === day ? '' : day; drawCal();
+    };
+  });
   bindList();
 }
 function listHtml(list, emptyMsg) {
@@ -143,6 +159,31 @@ function drawMonth() {
     <div class="tbl-wrap"><table class="wk-table"><thead><tr><th>월</th><th class="num">작업</th><th class="num">매출 (공급가)</th><th class="num">비용</th><th class="num">이익</th><th class="num">입금액</th></tr></thead><tbody>
     ${rows.map((r) => `<tr><td>${r.ym.replace('-', '년 ')}월</td><td class="num">${r.n}건</td><td class="num">${won(r.sales)}</td><td class="num">${won(r.cost)}</td><td class="num"><b${r.profit < 0 ? ' class="wk-due"' : ''}>${won(r.profit)}</b></td><td class="num">${won(r.inflow)}</td></tr>`).join('')}
     <tr class="wk-sum"><td>12개월 합계</td><td class="num">${T.n}건</td><td class="num">${won(T.sales)}</td><td class="num">${won(T.cost)}</td><td class="num">${won(T.profit)}</td><td class="num">${won(T.inflow)}</td></tr></tbody></table></div>`;
+}
+
+/* ---------- 네이버 캘린더로 보내기 (api/calendar.js) ---------- */
+function note(t) { V.note = t; const el = $('wk-note'); if (el) { el.textContent = t; el.classList.toggle('hidden', !t); } }
+async function calApi(body) {
+  const { data } = await sb.auth.getSession();
+  const tk = data.session && data.session.access_token;
+  const r = await fetch('/api/calendar', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${tk}` }, body: JSON.stringify(body) });
+  let j = {}; try { j = await r.json(); } catch (e) {}
+  if (!r.ok) throw Object.assign(new Error(j.error || `HTTP ${r.status}`), { setup: !!j.setup });
+  return j;
+}
+async function syncCal(w) {
+  try {
+    if (!w.work_date || w.status === 'canceled') {   // 날짜를 지웠거나 취소 → 네이버에서도 빼기
+      if (w.cal_href) { await calApi({ action: 'delete', href: w.cal_href }); await sb.from('works').update({ cal_href: null }).eq('id', w.id); w.cal_href = null; note('네이버 캘린더에서 일정을 뺐습니다.'); }
+      return;
+    }
+    const memo = [w.contact && `담당자: ${w.contact}`, w.phone && `연락처: ${w.phone}`, w.address && `주소: ${w.address}`, total(w) ? `금액: ${won(total(w))}원 (VAT 포함)` : '', w.memo || '', '마하파킹 관리자: https://www.mahaparking.co.kr/admin/'].filter(Boolean).join('\n');
+    const r = await calApi({ action: 'upsert', href: w.cal_href || '', title: `[마하파킹] ${w.site_name ? w.site_name + ' · ' : ''}${w.title}`, date: w.work_date, start: w.start_time || '', end: w.end_time || '', location: w.address || w.site_name || '', memo });
+    if (r.href && r.href !== w.cal_href) { await sb.from('works').update({ cal_href: r.href }).eq('id', w.id); w.cal_href = r.href; }
+    note(`네이버 캘린더에도 넣었습니다. (${w.start_time ? '하루 전 · 1시간 전' : '전날 저녁 6시'} 알림)`);
+  } catch (e) {
+    note(e.setup ? '작업은 저장했습니다. 네이버 캘린더는 아직 연결 전이라 넣지 못했습니다.' : `작업은 저장했습니다. 네이버 캘린더에는 넣지 못했습니다. (${e.message})`);
+  }
 }
 
 /* ---------- 작업 추가 · 고치기 ---------- */
@@ -231,12 +272,13 @@ function edit(w, preset) {
     if (r.error || !r.data) { this.disabled = false; $('w-msg').textContent = '저장하지 못했습니다. ' + ((r.error && r.error.message) || '다시 로그인한 뒤 해 주세요.'); return; }
     if (isNew) D.works.push(r.data); else D.works[D.works.findIndex((x) => x.id === W.id)] = r.data;
     D.works.sort((a, b) => ((a.work_date || '9999') < (b.work_date || '9999') ? -1 : 1));
-    closeModal(); if (r.data.work_date) { V.ym = r.data.work_date.slice(0, 7); } draw();
+    closeModal(); if (r.data.work_date) { V.ym = r.data.work_date.slice(0, 7); } V.note = '저장했습니다. 네이버 캘린더에 넣는 중...'; draw();
+    syncCal(byId(D.works, r.data.id));
   };
   if (!isNew) $('w-del').onclick = () => {
     modal(`<h3>이 작업을 삭제할까요?</h3><p>${esc(W.site_name || '')} ${esc(W.title)}<br>금액·비용·입금 기록이 모두 지워지며 되돌릴 수 없습니다. 작업만 안 하게 됐다면 상태를 <b>취소</b>로 바꾸는 것을 권합니다.</p><div class="btns"><button class="btn btn-danger" id="w-del2">삭제</button><button class="btn btn-line" id="w-back">돌아가기</button></div>`);
     $('w-back').onclick = () => edit(W);
-    $('w-del2').onclick = async () => { const r = await sb.from('works').delete().eq('id', W.id); if (r.error) return oops('삭제하지 못했습니다.', r.error); D.works = D.works.filter((x) => x.id !== W.id); closeModal(); draw(); };
+    $('w-del2').onclick = async () => { const r = await sb.from('works').delete().eq('id', W.id); if (r.error) return oops('삭제하지 못했습니다.', r.error); D.works = D.works.filter((x) => x.id !== W.id); closeModal(); V.note = ''; draw(); if (W.cal_href) calApi({ action: 'delete', href: W.cal_href }).then(() => note('작업을 지우고 네이버 캘린더에서도 뺐습니다.')).catch(() => note('작업을 지웠습니다. 네이버 캘린더 일정은 직접 지워 주세요.')); };
   };
 }
 
