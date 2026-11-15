@@ -125,7 +125,7 @@ function drawManagers() {
     <div class="add-row" style="align-items:center">
       <button class="btn btn-primary btn-sm" type="button" id="m-card">📷 명함으로 등록</button>
       <button class="btn btn-line btn-sm" type="button" id="m-add">+ 직접 등록</button>
-      <input type="file" id="m-file" accept="image/*" capture="environment" class="hidden">
+      <input type="file" id="m-file" accept="image/*" class="hidden">
       <input id="m-q" placeholder="이름 · 근무지 · 번호 찾기" value="${esc(V.mq)}" style="max-width:220px">
       <select id="m-k" style="width:auto">${[KIND_ALL].concat(SITE_KINDS.map((k) => [k, k])).map(([v, t]) => `<option value="${v}"${v === V.mk ? ' selected' : ''}>${t}</option>`).join('')}</select>
       <select id="m-f" style="width:auto">${Object.keys(F).map((k) => `<option value="${k}"${k === V.mf ? ' selected' : ''}>${F[k]}</option>`).join('')}</select>
@@ -160,9 +160,46 @@ function drawManagers() {
   root.querySelector('#m-f').onchange = (e) => { V.mf = e.target.value; draw(); };
   root.querySelector('#m-k').onchange = (e) => { V.mk = e.target.value; draw(); };
   root.querySelector('#m-add').onclick = () => managerModal(null);
-  root.querySelector('#m-card').onclick = () => root.querySelector('#m-file').click();
+  root.querySelector('#m-card').onclick = () => cardCamera(() => root.querySelector('#m-file').click());
   root.querySelector('#m-file').onchange = (e) => { const f = e.target.files[0]; e.target.value = ''; if (f) scanCard(f); };
   draw();
+}
+
+/** 명함 촬영: 화면에 명함 모양 테두리를 띄우고, 테두리 안만 잘라서 읽기 (카메라를 못 쓰면 사진 고르기) */
+const CARD_RATIO = 90 / 50;
+async function cardCamera(pickFile) {
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) return pickFile();
+  let stream;
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1080 } }, audio: false });
+  } catch (e) { return pickFile(); }
+  modal(`<h3 style="margin:0">명함 찍기</h3>
+    <div class="sl-cam" id="cam-box"><video id="cam-v" autoplay playsinline muted></video><div class="sl-cam-frame" id="cam-f"><span></span><span></span><span></span><span></span></div><p class="sl-cam-tip">명함을 테두리 안에 꽉 차게 맞춰 주세요</p></div>
+    <div class="btns" style="justify-content:center"><button class="btn btn-cta" id="cam-shot" style="min-width:140px">📷 찍기</button><button class="btn btn-line" id="cam-pick">사진에서 고르기</button><button class="btn btn-line" id="cam-close">닫기</button></div>`);
+  const v = document.getElementById('cam-v');
+  v.srcObject = stream;
+  const stop = () => { stream.getTracks().forEach((t) => t.stop()); clearInterval(watch); };
+  const watch = setInterval(() => { if (!document.body.contains(v) || $('modal').classList.contains('hidden')) stop(); }, 400);
+  document.getElementById('cam-close').onclick = () => { stop(); closeModal(); };
+  document.getElementById('cam-pick').onclick = () => { stop(); closeModal(); pickFile(); };
+  document.getElementById('cam-shot').onclick = () => {
+    const vw = v.videoWidth, vh = v.videoHeight;
+    if (!vw) return;
+    const box = document.getElementById('cam-box').getBoundingClientRect();
+    const fr = document.getElementById('cam-f').getBoundingClientRect();
+    const sc = Math.max(box.width / vw, box.height / vh);          // 화면에 보이는 배율 (object-fit: cover)
+    const dx = (box.width - vw * sc) / 2, dy = (box.height - vh * sc) / 2;
+    const pad = 0.04 * fr.width;                                     // 테두리 바깥 조금 여유
+    let x = (fr.left - box.left - pad - dx) / sc, y = (fr.top - box.top - pad - dy) / sc;
+    let w = (fr.width + pad * 2) / sc, h = (fr.height + pad * 2) / sc;
+    x = Math.max(0, x); y = Math.max(0, y); w = Math.min(vw - x, w); h = Math.min(vh - y, h);
+    const c = document.createElement('canvas');
+    const out = Math.min(1600, Math.round(w));
+    c.width = out; c.height = Math.round(out * h / w);
+    c.getContext('2d').drawImage(v, x, y, w, h, 0, 0, c.width, c.height);
+    stop();
+    c.toBlob((b) => { if (b) scanCard(b); else oops('사진을 만들지 못했습니다.'); }, 'image/jpeg', 0.9);
+  };
 }
 
 async function scanCard(file) {

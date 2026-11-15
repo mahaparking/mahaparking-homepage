@@ -46,9 +46,9 @@ module.exports = async (req, res) => {
       body: JSON.stringify({
         model: MODEL,
         max_tokens: 1000,
-        system: '한국어 명함 사진에서 글자를 정확히 옮겨 적습니다. 명함에 없는 정보는 지어내지 말고 빈 문자열로 둡니다. 전화번호는 숫자와 하이픈만 씁니다.',
+        system: '한국어 명함 사진에서 글자를 정확히 옮겨 적습니다. 반드시 card 도구를 한 번 호출해서 전달합니다. 명함에 없는 정보는 지어내지 말고 빈 문자열로 둡니다. 전화번호는 숫자와 하이픈만 씁니다.',
         tools: [TOOL],
-        tool_choice: { type: 'tool', name: 'card' },
+        tool_choice: { type: 'auto' },  // 일부 모델은 특정 도구 강제를 지원하지 않음
         messages: [{ role: 'user', content: [
           { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: b64 } },
           { type: 'text', text: '이 명함을 읽어 card 도구로 전달해 주세요.' },
@@ -61,6 +61,10 @@ module.exports = async (req, res) => {
   const data = await r.json().catch(() => ({}));
   if (!r.ok) return send(res, 502, { error: (data.error && data.error.message) || `AI 오류 (${r.status})` });
   const use = (data.content || []).find((c) => c.type === 'tool_use');
-  if (!use) return send(res, 502, { error: '명함을 읽지 못했습니다. 다시 찍어 주세요.' });
-  return send(res, 200, { card: use.input });
+  if (use) return send(res, 200, { card: use.input });
+  // 도구를 부르지 않고 글로 답한 경우: 글 속 JSON 꺼내기
+  const text = (data.content || []).filter((c) => c.type === 'text').map((c) => c.text).join('\n');
+  const m = text.match(/\{[\s\S]*\}/);
+  if (m) { try { return send(res, 200, { card: JSON.parse(m[0]) }); } catch (e) { /* 아래로 */ } }
+  return send(res, 502, { error: '명함을 읽지 못했습니다. 밝은 곳에서 다시 찍어 주세요.' });
 };
