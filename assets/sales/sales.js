@@ -80,6 +80,32 @@ const siteManagers = (sid) => D.jobs.filter((j) => j.site_id === sid && j.is_cur
 const sendable = (m) => m.consent && !m.opt_out && isMobile(m.mobile);
 const siteByName = (name) => D.sites.find((s) => s.name.replace(/\s/g, '') === String(name || '').replace(/\s/g, ''));
 
+/* ---------- 최근 홍보 (문자·우편 중 가장 최근 1건) ---------- */
+const PROMO_KIND = { sms: '단문 문자', lms: '장문 문자', mms: '사진 문자', kakao: '카카오톡', phone_app: '폰 문자', mail: '📮 우편' };
+function lastPromoManager(m) {
+  const sites = new Set(curJobs(m.id).map((j) => j.site_id).filter(Boolean));
+  for (const x of D.sends) {
+    if (x.is_test) continue;
+    const hit = (x.recipients || []).some((r) => (x.channel === 'mail' ? sites.has(r.site_id) : r.manager_id === m.id && r.ok !== false));
+    if (hit) return x;
+  }
+  return null;
+}
+function lastPromoSite(site) {
+  const ids = new Set(siteManagers(site.id).map((m) => m.id));
+  for (const x of D.sends) {
+    if (x.is_test) continue;
+    const hit = (x.recipients || []).some((r) => (x.channel === 'mail' ? r.site_id === site.id : ids.has(r.manager_id) && r.ok !== false));
+    if (hit) return x;
+  }
+  return null;
+}
+/** "📣 11.15 · 사진 문자 · 제목" (없으면 '아직 보낸 홍보 없음') */
+function promoTag(x, short) {
+  if (!x) return '<span class="sl-promo none">📣 아직 보낸 홍보 없음</span>';
+  return `<span class="sl-promo">📣 ${dot(x.created_at).slice(short ? 5 : 0)} · ${PROMO_KIND[x.channel] || esc(x.channel)}${x.promo_title ? ` · ${esc(x.promo_title)}` : ''}</span>`;
+}
+
 /* ---------- 불러오기 ---------- */
 async function load() {
   root.innerHTML = '<p class="hint" style="padding:30px 0">불러오고 있습니다...</p>';
@@ -88,9 +114,8 @@ async function load() {
     sb.from('managers').select('*').order('created_at', { ascending: false }),
     sb.from('manager_jobs').select('*').order('start_date', { ascending: false, nullsFirst: false }),
     sb.from('promos').select('*').order('created_at', { ascending: false }),
-    sb.from('promo_sends').select('id,promo_title,channel,total,ok,fail,is_test,created_at').order('created_at', { ascending: false }).limit(200),
+    sb.from('promo_sends').select('*').order('created_at', { ascending: false }).limit(500),
     sb.from('sales_settings').select('*'),
-    sb.from('promo_sends').select('*').eq('channel', 'mail').order('created_at', { ascending: false }).limit(300),
   ]);
   const err = r.find((x) => x.error);
   if (err) {
@@ -102,7 +127,7 @@ async function load() {
   }
   [D.sites, D.managers, D.jobs, D.promos, D.sends] = r.slice(0, 5).map((x) => x.data || []);
   D.settings = {}; (r[5].data || []).forEach((x) => { D.settings[x.key] = x.value || ''; });
-  D.mails = r[6].data || [];
+  D.mails = D.sends.filter((x) => x.channel === 'mail');
   D.loaded = true;
   mount();
 }
@@ -155,6 +180,7 @@ function drawManagers() {
           ${m.worked_with ? '<span class="status sl-worked">함께 일함</span>' : ''}
           ${m.source === 'web' ? `<span class="status ${V.webSeen && m.created_at > V.webSeen ? 'st-new">새 신청' : 'st-quote">홈페이지 신청'}</span>` : ''}</div>
         <div class="sl-line">${m.mobile ? `📱 <a href="tel:${digits(m.mobile)}">${esc(tel(m.mobile))}</a>` : '<span class="hint">휴대폰 없음</span>'}</div>
+        <div class="sl-line">${promoTag(lastPromoManager(m))}</div>
         <div class="sl-btns"><button class="btn btn-line btn-sm" type="button" data-open="${m.id}">자세히 · 수정</button><button class="btn btn-line btn-sm" type="button" data-move="${m.id}">근무지 변경</button><button class="btn btn-danger btn-sm" type="button" data-mdel="${m.id}">삭제</button></div>
       </div>`).join('') : '<p class="empty">해당하는 담당자가 없습니다. 명함을 찍어 등록해 보세요.</p>';
     root.querySelectorAll('[data-open]').forEach((b) => { b.onclick = () => managerModal(byId(D.managers, b.dataset.open)); });
@@ -405,7 +431,7 @@ function drawSites() {
         <div class="sl-card-h"><b>${esc(s.name)}</b><span class="status sl-kind">${kindOf(s.kind)}</span><span class="status ${st[1]}">${st[0]}</span>${s.need_new_manager ? '<span class="status st-new">새 담당자 확인</span>' : ''}${s.region ? `<span class="hint">${esc(s.region)}</span>` : ''}</div>
         <div class="sl-line">👤 ${ms.length ? ms.map((m) => `${esc(m.name)} ${esc(m.title || '')}`).join(', ') : '<span class="hint">담당자 미등록</span>'}</div>
         <div class="sl-line">${s.office_tel ? `☎ <a href="tel:${digits(s.office_tel)}">${esc(tel(s.office_tel))}</a>` : ''}${s.office_fax ? ` <span class="hint">팩스 ${esc(tel(s.office_fax))}</span>` : ''}${s.households ? ` <span class="hint">· ${s.households}세대</span>` : ''}</div>
-        ${lastMail(s.id) ? `<div class="sl-line hint">📮 ${dot(lastMail(s.id).date)} 우편 발송 · ${esc(lastMail(s.id).title || '')}${lastMail(s.id).called ? ' · 전화 완료' : ''}</div>` : ''}
+        <div class="sl-line">${promoTag(lastPromoSite(s))}${(() => { const lm = lastMail(s.id), lp = lastPromoSite(s); return lm && lp && lp.channel === 'mail' && lm.called ? ' <span class="status st-sent">전화 완료</span>' : ''; })()}</div>
         <div class="sl-btns"><button class="btn btn-line btn-sm" type="button" data-sopen="${s.id}">자세히 · 수정</button><button class="btn btn-danger btn-sm" type="button" data-sdel="${s.id}">삭제</button></div>
       </div>`;
     }).join('') : '<p class="empty">해당하는 곳이 없습니다.</p>';
@@ -617,7 +643,7 @@ function drawSend() {
     <div class="sl-step"><b><span class="sl-no">2</span>받는 분 고르기</b>
       <div class="add-row" style="margin:6px 0">${Object.keys(groups).map((k) => `<button class="btn btn-line btn-sm" type="button" data-grp="${k}">${groups[k][0]} (${groups[k][1]().length})</button>`).join('')}<button class="btn btn-line btn-sm" type="button" id="x-clear">모두 해제</button></div>
       <p class="hint" style="margin:0 0 6px">수신 동의한 분만 고를 수 있습니다. 빠진 분: 동의 전 ${ex.none}명 · 수신거부 ${ex.out}명 · 휴대폰 없음 ${ex.noNum}명</p>
-      <div class="sl-pick">${ok.length ? ok.map((m) => `<label class="sl-chk"><input type="checkbox" data-pick="${m.id}"${S.ids.has(m.id) ? ' checked' : ''}> <span><b>${esc(m.name)}</b> <span class="hint">${esc(curSiteText(m.id) || '')} · ${esc(tel(m.mobile))}</span></span></label>`).join('') : '<p class="empty">수신 동의한 분이 아직 없습니다. 담당자 화면에서 동의를 체크해 주세요.</p>'}</div>
+      <div class="sl-pick">${ok.length ? ok.map((m) => `<label class="sl-chk"><input type="checkbox" data-pick="${m.id}"${S.ids.has(m.id) ? ' checked' : ''}> <span><b>${esc(m.name)}</b> <span class="hint">${esc(curSiteText(m.id) || '')} · ${esc(tel(m.mobile))}</span><br>${promoTag(lastPromoManager(m), true)}</span></label>`).join('') : '<p class="empty">수신 동의한 분이 아직 없습니다. 담당자 화면에서 동의를 체크해 주세요.</p>'}</div>
       <p style="margin:6px 0 0"><b id="x-count">${S.ids.size}</b>명 선택</p>
     </div>
     <div class="sl-step"><b><span class="sl-no">3</span>문구 쓰기</b>
@@ -667,8 +693,8 @@ function drawSend() {
         const j = await api('/api/promo-send', { promo_id: S.promo || null, manager_ids: test ? [] : [...S.ids], text: S.text, test });
         msg.textContent = '';
         modal(`<h3>${test ? '테스트 문자를 보냈습니다' : '보냈습니다'}</h3><p>성공 <b>${j.ok}</b>건 · 실패 <b>${j.fail}</b>건${j.skipped ? ` · 동의 확인 안 돼 제외 ${j.skipped}명` : ''}</p>${j.failed && j.failed.length ? `<ul class="sl-hist">${j.failed.map((f) => `<li><span>${esc(f.name)} ${esc(tel(f.phone))}</span><span class="hint">${esc(f.error || '')}</span></li>`).join('')}</ul>` : ''}<button class="btn btn-primary" data-close>확인</button>`);
-        const h = await sb.from('promo_sends').select('id,promo_title,channel,total,ok,fail,is_test,created_at').order('created_at', { ascending: false }).limit(200);
-        if (!h.error) D.sends = h.data;
+        const h = await sb.from('promo_sends').select('*').order('created_at', { ascending: false }).limit(500);
+        if (!h.error) { D.sends = h.data; D.mails = D.sends.filter((x) => x.channel === 'mail'); }
       } catch (e) { msg.textContent = ''; oops('보내지 못했습니다.', e); }
       finally { $$('#x-test').disabled = false; $$('#x-go').disabled = kstHour() >= 21 || kstHour() < 8; }
     };
@@ -684,8 +710,8 @@ function drawSend() {
     try {
       await q(sb.from('promo_sends').insert({ promo_id: promo ? promo.id : null, promo_title: promo ? promo.title : null, channel: 'phone_app', text: buildMessage(S.text, promo), recipients: sel.map((m) => ({ manager_id: m.id, name: m.name, phone: digits(m.mobile), ok: true })), total: sel.length, ok: sel.length, fail: 0 }), '기록하지 못했습니다.');
       S.opened.clear();
-      const h = await sb.from('promo_sends').select('id,promo_title,channel,total,ok,fail,is_test,created_at').order('created_at', { ascending: false }).limit(200);
-      if (!h.error) D.sends = h.data;
+      const h = await sb.from('promo_sends').select('*').order('created_at', { ascending: false }).limit(500);
+      if (!h.error) { D.sends = h.data; D.mails = D.sends.filter((x) => x.channel === 'mail'); }
       V.sub = 'history'; mount();
     } catch (e) { oops(e.userMsg || '기록하지 못했습니다.', e); }
   };
@@ -743,7 +769,7 @@ function drawMail() {
         <input id="ml-q" placeholder="이름 · 지역 · 주소 찾기" value="${esc(M.q)}" style="max-width:200px">
         <button class="btn btn-line btn-sm" type="button" id="ml-all">보이는 곳 모두 선택</button><button class="btn btn-line btn-sm" type="button" id="ml-none">모두 해제</button>
       </div>
-      <div class="sl-pick">${list.length ? list.map((x) => { const lm = lastMail(x.id), ad = addrOf(x); return `<label class="sl-chk"${ad ? '' : ' style="opacity:.6"'}><input type="checkbox" data-mpick="${x.id}"${M.ids.has(x.id) ? ' checked' : ''}${ad ? '' : ' disabled'}> <span><b>${esc(x.name)}</b> <span class="status sl-kind">${kindOf(x.kind)}</span> <span class="hint">${ad ? esc(ad) : '주소 없음 — 단지·건물에서 주소를 넣어 주세요'}${lm ? ` · 📮 ${dot(lm.date)} 발송` : ''}</span></span></label>`; }).join('') : '<p class="empty">해당하는 곳이 없습니다. 단지·건물에서 먼저 등록해 주세요.</p>'}</div>
+      <div class="sl-pick">${list.length ? list.map((x) => { const lm = lastMail(x.id), ad = addrOf(x); return `<label class="sl-chk"${ad ? '' : ' style="opacity:.6"'}><input type="checkbox" data-mpick="${x.id}"${M.ids.has(x.id) ? ' checked' : ''}${ad ? '' : ' disabled'}> <span><b>${esc(x.name)}</b> <span class="status sl-kind">${kindOf(x.kind)}</span> <span class="hint">${ad ? esc(ad) : '주소 없음 — 단지·건물에서 주소를 넣어 주세요'}</span><br>${promoTag(lastPromoSite(x), true)}</span></label>`; }).join('') : '<p class="empty">해당하는 곳이 없습니다. 단지·건물에서 먼저 등록해 주세요.</p>'}</div>
       <p style="margin:6px 0 0"><b id="ml-n">${M.ids.size}</b>곳 선택</p>
     </div>
     <div class="sl-step"><b><span class="sl-no">2</span>주소 라벨 · 우편 파일</b>
@@ -784,9 +810,8 @@ function drawMail() {
       try {
         const when = new Date(`${M.date}T12:00:00+09:00`).toISOString();
         const row = await q(sb.from('promo_sends').insert({ channel: 'mail', promo_title: M.title.trim(), recipients: sel.map((x) => ({ site_id: x.id, name: x.name, address: addrOf(x), ok: true, called: false })), total: sel.length, ok: sel.length, fail: 0, created_at: when }).select().single(), '기록하지 못했습니다.');
-        D.mails.unshift(row); D.mails.sort((a, b) => (a.created_at < b.created_at ? 1 : -1));
-        D.sends.unshift({ id: row.id, promo_title: row.promo_title, channel: 'mail', total: row.total, ok: row.ok, fail: 0, is_test: false, created_at: row.created_at });
-        D.sends.sort((a, b) => (a.created_at < b.created_at ? 1 : -1));
+        D.sends.unshift(row); D.sends.sort((a, b) => (a.created_at < b.created_at ? 1 : -1));
+        D.mails = D.sends.filter((x) => x.channel === 'mail');
         M.ids.clear();
         modal(`<h3>기록했습니다 📮</h3><p>${sel.length}곳 · ${esc(row.promo_title)}</p><p class="hint">단지·건물 카드에 발송 날짜가 표시되고, "보낸 기록"에도 남습니다.</p><button class="btn btn-primary" data-close>확인</button>`);
         mount();
