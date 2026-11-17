@@ -217,6 +217,24 @@
   .wk-form,.wk-row3{grid-template-columns:1fr}.wk-line3{grid-template-columns:1fr 1fr 32px}.wk-line3 [data-pm]{grid-column:1/3}
   .wk-nav .hint{margin-left:0;width:100%}
 }
+/* 올린 시공사례: 폰에서는 카드처럼 (고치기 버튼이 화면 밖으로 안 나가게) */
+@media (max-width:700px){
+  .case-tbl thead{display:none}
+  .case-tbl,.case-tbl tbody{display:block}
+  #case-body tr{display:grid;grid-template-columns:auto 1fr;gap:4px 10px;padding:14px 4px;border-bottom:1px solid var(--line)}
+  #case-body td{display:block;border:0;padding:0;font-size:14px}
+  #case-body td:nth-child(1){grid-column:1;color:var(--muted)}
+  #case-body td:nth-child(2){grid-column:1/-1;grid-row:2;font-size:16px}
+  #case-body td:nth-child(3),#case-body td:nth-child(4),#case-body td:nth-child(5){grid-row:3;color:var(--muted)}
+  #case-body td:nth-child(3){grid-column:1}
+  #case-body td:nth-child(4)::before{content:'· '}#case-body td:nth-child(5)::before{content:'· 사진 '}
+  #case-body tr{grid-template-columns:auto auto auto 1fr}
+  #case-body td:nth-child(2){grid-column:1/-1}
+  #case-body td:nth-child(6){grid-column:1/-1;grid-row:4;text-align:left!important}
+  #case-body td:nth-child(6)::before{content:'홈페이지 공개 ';font-size:13px;color:var(--muted);vertical-align:middle}
+  #case-body td:nth-child(7){grid-column:1/-1;grid-row:5;white-space:normal!important;display:flex;flex-wrap:wrap;gap:6px;margin-top:4px}
+  #case-body td[colspan]{grid-column:1/-1}
+}
 </style>
 </head>
 <body>
@@ -388,7 +406,7 @@
         <p class="hint" id="k-msg" role="status"></p>
       </form>
       <h3 style="font-size:17px;margin:30px 0 10px">올린 시공사례</h3>
-      <div class="tbl-wrap"><table><thead><tr><th>작업일</th><th>제목</th><th>지역</th><th>종류</th><th>사진</th><th>홈페이지 공개</th><th></th></tr></thead><tbody id="case-body"></tbody></table></div>
+      <div class="tbl-wrap"><table class="case-tbl"><thead><tr><th>작업일</th><th>제목</th><th>지역</th><th>종류</th><th>사진</th><th>홈페이지 공개</th><th></th></tr></thead><tbody id="case-body"></tbody></table></div>
     </div>
 
     <!-- 현장샷: 사진 → 쇼츠 영상 + 블로그 글 (assets/shot/hyunjangshot.js) -->
