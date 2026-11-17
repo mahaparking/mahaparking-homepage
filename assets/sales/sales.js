@@ -1072,11 +1072,11 @@ async function kaptExcel(list) {
   if (!window.XLSX) {
     await new Promise((ok, no) => { const sc = document.createElement('script'); sc.src = 'https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js'; sc.onload = ok; sc.onerror = () => no(new Error('엑셀 도구를 불러오지 못했습니다.')); document.head.appendChild(sc); });
   }
-  const head = ['시·도', '시·군·구', '읍·면·동', '단지명', '관리사무소 전화', '관리사무소 팩스', '도로명 주소', '지번 주소', '세대수', '동수', '관리 방식', '사용승인일', '단지코드'];
-  const rows = list.map((x) => [x.sido || '', x.sigungu || '', x.dong || '', x.name || '', tel(x.tel), tel(x.fax), x.doro || '', x.addr || '', x.households || '', x.dongs || '', x.mgr || '', x.usedate ? String(x.usedate).replace(/^(\d{4})(\d{2})(\d{2})$/, '$1-$2-$3') : '', x.code]);
+  const head = ['시·도', '시·군·구', '읍·면·동', '단지명', '관리사무소 전화', '관리사무소 팩스', '우편번호', '도로명 주소', '지번 주소', '세대수', '동수', '관리 방식', '사용승인일', '단지코드'];
+  const rows = list.map((x) => [x.sido || '', x.sigungu || '', x.dong || '', x.name || '', tel(x.tel), tel(x.fax), x.zip || '', x.doro || '', x.addr || '', x.households || '', x.dongs || '', x.mgr || '', x.usedate ? String(x.usedate).replace(/^(\d{4})(\d{2})(\d{2})$/, '$1-$2-$3') : '', x.code]);
   const ws = XLSX.utils.aoa_to_sheet([head].concat(rows));
-  ws['!cols'] = [6, 10, 10, 26, 15, 15, 40, 40, 7, 6, 10, 11, 11].map((w) => ({ wch: w }));
-  ws['!autofilter'] = { ref: `A1:M${rows.length + 1}` };
+  ws['!cols'] = [6, 10, 10, 26, 15, 15, 8, 40, 40, 7, 6, 10, 11, 11].map((w) => ({ wch: w }));
+  ws['!autofilter'] = { ref: `A1:N${rows.length + 1}` };
   ws['!freeze'] = { xSplit: 0, ySplit: 1 };
   const note = XLSX.utils.aoa_to_sheet([
     ['마하파킹 — 아파트 관리사무소 연락처'],
@@ -1143,8 +1143,8 @@ async function drawKapt() {
       </div>
       <div class="btns"><button class="btn btn-primary" type="button" id="kp-xlsx"${list.length ? '' : ' disabled'}>⬇ 엑셀 파일로 저장</button><button class="btn btn-line" type="button" id="kp-imp"${list.length && !K.run ? '' : ' disabled'}>＋ 보이는 곳을 고객사 리스트에 넣기</button></div>
       <p class="hint" style="margin:6px 0 0">지역·검색으로 좁힌 그대로 저장됩니다. 고객사 리스트에 넣으면 우편(DM) 라벨 인쇄와 전화 영업에 바로 쓸 수 있습니다.</p>
-      <div class="tbl-wrap" style="margin-top:10px;max-height:420px;overflow:auto"><table><thead><tr><th>지역</th><th>단지명</th><th>관리사무소 전화</th><th>팩스</th><th>세대</th></tr></thead><tbody>
-        ${show.length ? show.map((x) => `<tr><td>${esc([x.sigungu, x.dong].filter(Boolean).join(' '))}</td><td><b>${esc(x.name)}</b>${siteByName(x.name) ? ' <span class="status st-sent">등록됨</span>' : ''}</td><td style="white-space:nowrap">${x.tel ? `<a href="tel:${digits(x.tel)}">${esc(tel(x.tel))}</a>` : '<span class="hint">-</span>'}</td><td style="white-space:nowrap">${esc(tel(x.fax)) || '<span class="hint">-</span>'}</td><td>${x.households || ''}</td></tr>`).join('') : '<tr><td colspan="5" class="empty">받은 단지가 없습니다.</td></tr>'}
+      <div class="tbl-wrap" style="margin-top:10px;max-height:420px;overflow:auto"><table><thead><tr><th>지역</th><th>단지명 · 주소</th><th>관리사무소 전화</th><th>팩스</th><th>세대</th></tr></thead><tbody>
+        ${show.length ? show.map((x) => `<tr><td>${esc([x.sigungu, x.dong].filter(Boolean).join(' '))}</td><td><b>${esc(x.name)}</b>${siteByName(x.name) ? ' <span class="status st-sent">등록됨</span>' : ''}${x.doro || x.addr ? `<br><span class="hint">${x.zip ? '(' + esc(x.zip) + ') ' : ''}${esc(x.doro || x.addr)}</span>` : ''}</td><td style="white-space:nowrap">${x.tel ? `<a href="tel:${digits(x.tel)}">${esc(tel(x.tel))}</a>` : '<span class="hint">-</span>'}</td><td style="white-space:nowrap">${esc(tel(x.fax)) || '<span class="hint">-</span>'}</td><td>${x.households || ''}</td></tr>`).join('') : '<tr><td colspan="5" class="empty">받은 단지가 없습니다.</td></tr>'}
       </tbody></table></div>
       ${list.length > show.length ? `<p class="hint">화면에는 앞의 300곳만 보입니다. 엑셀에는 ${list.length.toLocaleString()}곳이 모두 들어갑니다.</p>` : ''}
     </div>
