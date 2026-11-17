@@ -34,7 +34,7 @@ async function call(eps, params, trace) {
     try { j = JSON.parse(t); } catch (e) { /* XML 오류 응답 */ }
     if (!j) {
       if (/SERVICE_KEY|SERVICE KEY|등록되지 않은|LIMITED_NUMBER|LIMITED NUMBER/i.test(t)) {
-        if (/LIMITED/i.test(t)) throw new Error('오늘 쓸 수 있는 공공데이터 호출 횟수를 다 썼습니다. 내일 "이어서 불러오기"를 눌러 주세요.');
+        if (/LIMITED/i.test(t)) throw new Error(`오늘 쓸 수 있는 공공데이터 호출 횟수를 다 썼습니다 (${/List/.test(ep) ? '단지 목록' : /Dtl/.test(ep) ? '상세 정보' : '기본 정보'}). 자정이 지나면 다시 채워지니 내일 "이어서 불러오기"를 눌러 주세요.`);
         notReg = true; last = `${ep} 인증키 미등록`; continue;
       }
       if (/NO_OPENAPI_SERVICE|NO OPENAPI|NODATA/i.test(t)) { last = `${ep} 응답 없음`; continue; }
@@ -45,13 +45,13 @@ async function call(eps, params, trace) {
     if (gw) {
       const code = String(gw.returnReasonCode || ''), msg = String(gw.errMsg || '');
       if (code === '12' || /NO_OPENAPI/i.test(msg)) { last = `${ep} 폐기됨`; continue; }
-      if (code === '22' || /LIMITED/i.test(msg)) throw new Error('오늘 쓸 수 있는 공공데이터 호출 횟수를 다 썼습니다. 내일 "이어서 불러오기"를 눌러 주세요.');
+      if (code === '22' || /LIMITED/i.test(msg)) throw new Error(`오늘 쓸 수 있는 공공데이터 호출 횟수를 다 썼습니다 (${/List/.test(ep) ? '단지 목록' : /Dtl/.test(ep) ? '상세 정보' : '기본 정보'}). 자정이 지나면 다시 채워지니 내일 "이어서 불러오기"를 눌러 주세요.`);
       if (/^(20|30|31|32|33)$/.test(code) || /SERVICE_KEY|ACCESS_DENIED/i.test(msg)) { notReg = true; last = `${ep} 인증키 미등록`; continue; }   // 다른 판 번호로 신청됐을 수 있어 다음 것도 시도
       last = `${ep}: ${msg || code}`; continue;
     }
     const head = (j.response && j.response.header) || j.header || {};
     if (head.resultCode && !/^0+$/.test(String(head.resultCode))) {
-      if (String(head.resultCode) === '22') throw new Error('오늘 쓸 수 있는 공공데이터 호출 횟수를 다 썼습니다. 내일 "이어서 불러오기"를 눌러 주세요.');
+      if (String(head.resultCode) === '22') throw new Error(`오늘 쓸 수 있는 공공데이터 호출 횟수를 다 썼습니다 (${/List/.test(ep) ? '단지 목록' : /Dtl/.test(ep) ? '상세 정보' : '기본 정보'}). 자정이 지나면 다시 채워지니 내일 "이어서 불러오기"를 눌러 주세요.`);
       if (/30|31|32|33/.test(String(head.resultCode))) { notReg = true; last = `${ep} 인증키 미등록`; continue; }
       last = head.resultMsg || `오류 ${head.resultCode}`; continue;
     }
