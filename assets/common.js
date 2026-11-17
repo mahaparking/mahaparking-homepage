@@ -89,7 +89,7 @@ function photoEditor(src, done, cancel) {
     '<button type="button" class="btn btn-line btn-sm" id="pe-m" aria-pressed="false">▦ 모자이크</button><button type="button" class="btn btn-line btn-sm" id="pe-u" disabled>되돌리기</button><button type="button" class="btn btn-line btn-sm" id="pe-0" disabled>처음 사진으로</button></div>' +
     '<p class="hint" id="pe-hint" style="margin:6px 0">돌리기 버튼으로 방향을 맞추세요. 번호판·얼굴은 [모자이크]를 누른 뒤 사진 위를 끌어서 네모로 칠하면 가려집니다.</p>' +
     '<div class="pe-stage"><canvas id="pe-c"></canvas></div>' +
-    '<div class="btns" style="margin-top:12px"><button class="btn btn-primary" id="pe-ok">편집 저장</button><button class="btn btn-line" id="pe-x">취소</button></div><p class="hint" id="pe-msg" role="status"></p>');
+    '<div class="btns" style="margin-top:12px"><button class="btn btn-primary" id="pe-ok">편집 저장</button><button class="btn btn-line" id="pe-x">취소</button></div><p class="hint" id="pe-msg" role="status"></p>', { lock: true });
   $('modal-box').classList.add('wide');
   var cv = $('pe-c'), ctx = cv.getContext('2d'), hist = [], orig = null, mosaic = false, drag = null, base = null;
   var copy = function (c) { var k = document.createElement('canvas'); k.width = c.width; k.height = c.height; k.getContext('2d').drawImage(c, 0, 0); return k; };
@@ -164,7 +164,14 @@ function gallery(urls, start, title) {
 document.addEventListener('keydown', function (e) { if (gallery.key) gallery.key(e); });
 
 /* 팝업 */
-function modal(html) { $('modal-box').classList.remove('wide'); $('modal-box').innerHTML = html; $('modal').classList.remove('hidden'); var c = $('modal-box').querySelector('[data-close]'); if (c) c.focus(); }
-function closeModal() { $('modal').classList.add('hidden'); }
-document.addEventListener('click', function (e) { if (e.target.id === 'modal' || e.target.closest('[data-close]')) closeModal(); });
-document.addEventListener('keydown', function (e) { if (e.key === 'Escape') closeModal(); });
+/* opt.lock: 입력 창처럼 바깥을 누르거나 Esc 를 눌러도 닫히지 않게 ([닫기] 버튼으로만 닫힘) */
+function modal(html, opt) { $('modal-box').classList.remove('wide'); $('modal-box').innerHTML = html; $('modal').dataset.lock = opt && opt.lock ? '1' : ''; $('modal').classList.remove('hidden'); var c = $('modal-box').querySelector('[data-close]'); if (c && !(opt && opt.lock)) c.focus(); }
+function closeModal() { $('modal').classList.add('hidden'); $('modal').dataset.lock = ''; }
+// 바깥(어두운 곳)을 눌렀다 뗐을 때만 닫기 — 입력 칸에서 글자를 끌어 선택하다 바깥에서 손을 떼도 닫히지 않게
+var modalDownOnBack = false;
+document.addEventListener('mousedown', function (e) { modalDownOnBack = e.target.id === 'modal'; });
+document.addEventListener('click', function (e) {
+  if (e.target.closest && e.target.closest('[data-close]')) return closeModal();
+  if (e.target.id === 'modal' && modalDownOnBack && !$('modal').dataset.lock) closeModal();
+});
+document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && $('modal') && !$('modal').classList.contains('hidden') && !$('modal').dataset.lock) closeModal(); });

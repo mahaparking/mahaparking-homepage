@@ -224,7 +224,7 @@ function edit(w, preset) {
     </div>
     <label class="f" for="w-memo">메모<textarea id="w-memo" rows="2">${esc(W.memo || '')}</textarea></label>
     <div class="btns" style="margin-top:12px"><button class="btn btn-primary" id="w-save">저장</button><button class="btn btn-line" data-close>닫기</button>${isNew ? '' : '<button class="btn btn-danger" id="w-del" style="margin-left:auto">삭제</button>'}</div>
-    <p class="hint" id="w-msg" role="status"></p>`);
+    <p class="hint" id="w-msg" role="status"></p>`, { lock: true });
   $('modal-box').classList.add('wide');
   const money = (el) => { el.addEventListener('input', () => { const p = el.selectionStart, before = el.value.length; const n = num(el.value); el.value = el.value.trim() === '' ? '' : won(n); const d = el.value.length - before; try { el.setSelectionRange(p + d, p + d); } catch (e) {} calc(); }); };
   function lineAmt(x) { return x.amount !== undefined && x.amount !== '' && x.manual ? num(x.amount) : Math.round(num(x.qty || 0) * num(x.price)); }
@@ -312,7 +312,7 @@ function quickPay(w) {
   const left = dueOf(w);
   modal(`<h3>입금 기록</h3><p class="hint" style="margin:0">${esc(w.site_name || '')} · ${esc(w.title)}<br>합계 ${won(total(w))}원 · 받은 돈 ${won(paidOf(w))}원 · <b>미수금 ${won(left)}원</b></p>
     <div class="wk-row3" style="margin-top:12px"><label class="f" for="qp-date">입금일<input id="qp-date" type="date" value="${today()}"></label><label class="f" for="qp-amt">입금액 (원)<input id="qp-amt" inputmode="numeric" value="${won(left)}"></label><label class="f" for="qp-memo">메모<input id="qp-memo" placeholder="예) 계좌이체"></label></div>
-    <div class="btns" style="margin-top:12px"><button class="btn btn-primary" id="qp-save">기록</button><button class="btn btn-line" data-close>닫기</button></div><p class="hint" id="qp-msg" role="status"></p>`);
+    <div class="btns" style="margin-top:12px"><button class="btn btn-primary" id="qp-save">기록</button><button class="btn btn-line" data-close>닫기</button></div><p class="hint" id="qp-msg" role="status"></p>`, { lock: true });
   $('qp-amt').addEventListener('input', function () { this.value = this.value.trim() ? won(num(this.value)) : ''; });
   $('qp-save').onclick = async function () {
     const amt = num($('qp-amt').value); if (!amt) { $('qp-msg').textContent = '입금액을 적어 주세요.'; return; }
