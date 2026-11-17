@@ -13,6 +13,8 @@
 const { readBody, send, guard } = require('./_auth');
 
 const BASE = 'https://apis.data.go.kr/1613000';
+// Encoding 키(%2B 등)를 넣어도 되도록 한 번 풀어서 씁니다.
+const KEY = () => { const k = String(process.env.DATA_GO_KR_KEY || '').trim(); try { return /%[0-9A-F]{2}/i.test(k) ? decodeURIComponent(k) : k; } catch (e) { return k; } };
 // 기관이 판 번호를 올리면 이름이 바뀌어서, 새 것부터 차례로 시도합니다.
 const LIST_EP = ['AptListService3/getSidoAptList3', 'AptListService2/getSidoAptList'];
 const INFO_EP = ['AptBasisInfoServiceV4/getAphusBassInfoV4', 'AptBasisInfoServiceV3/getAphusBassInfoV3', 'AptBasisInfoService1/getAphusBassInfo'];
@@ -20,7 +22,7 @@ const INFO_EP = ['AptBasisInfoServiceV4/getAphusBassInfoV4', 'AptBasisInfoServic
 async function call(eps, params) {
   let last = '';
   for (const ep of eps) {
-    const q = new URLSearchParams({ serviceKey: process.env.DATA_GO_KR_KEY, _type: 'json', ...params });
+    const q = new URLSearchParams({ serviceKey: KEY(), _type: 'json', ...params });
     let r;
     try { r = await fetch(`${BASE}/${ep}?${q}`, { headers: { Accept: 'application/json' } }); } catch (e) { last = '공공데이터 서버에 연결하지 못했습니다.'; continue; }
     const t = await r.text();
