@@ -55,7 +55,7 @@ async function call(eps, params, trace) {
       last = head.resultMsg || `오류 ${head.resultCode}`; continue;
     }
     const body = (j.response && j.response.body) || j.body || {};
-    if (!items(body).length && ep !== eps[eps.length - 1]) { last = `${ep} 결과 없음`; emptyBody = emptyBody || body; continue; }   // 옛 판 번호가 빈 결과를 줄 때는 다음 것도 시도
+    if (!items(body).length && !(body.item && typeof body.item === 'object') && ep !== eps[eps.length - 1]) { last = `${ep} 결과 없음`; emptyBody = emptyBody || body; continue; }   // 옛 판 번호가 빈 결과를 줄 때는 다음 것도 시도
     return body;
   }
   if (emptyBody) return emptyBody;
@@ -125,7 +125,7 @@ module.exports = async (req, res) => {
       const out = {};
       for (const [name, eps, params] of [['list', LIST_EP, { sidoCode: '11', pageNo: '1', numOfRows: '1' }], ['info', INFO_EP, { kaptCode: 'A10027875' }]]) {
         const trace = [];
-        try { const body = await call(eps, params, trace); out[name] = { ok: true, n: items(body).length, trace }; } catch (e) { out[name] = { ok: false, error: e.message, trace }; }
+        try { const body = await call(eps, params, trace); const it = items(body)[0] || body.item || null; out[name] = { ok: true, n: items(body).length || (it ? 1 : 0), sample: it, trace }; } catch (e) { out[name] = { ok: false, error: e.message, trace }; }
       }
       return send(res, 200, out);
     }

@@ -1032,12 +1032,12 @@ async function kaptRun() {
     const CH = 24;
     const chunks = [];
     for (let i = 0; i < todo.length; i += CH) chunks.push(todo.slice(i, i + CH));
-    let n = 0;
+    let n = 0; K.infoErr = '';
     const worker = async () => {
       while (chunks.length && !K.stop) {
         const c = chunks.shift();
         const r = await api('/api/kapt', { action: 'info', codes: c });
-        r.info.forEach((x) => { if (x.ok) db.info[x.code] = x; });
+        r.info.forEach((x) => { if (x.ok) db.info[x.code] = x; else if (!K.infoErr) K.infoErr = x.error; });
         n += c.length;
         if (n % 480 < CH) kaptSave();
         const ct = kaptCount();
@@ -1048,7 +1048,7 @@ async function kaptRun() {
     kaptSave();
     const ct = kaptCount();
     if (!ct.all && K.trace) { K.msg = '공공데이터에서 단지 목록이 0곳으로 왔습니다. 아래 응답 내용을 클로드에게 보여 주세요.\n' + K.trace.join('\n'); K.run = false; drawKapt(); return; }
-    K.msg = K.stop ? `멈췄습니다. ${ct.done.toLocaleString()} / ${ct.all.toLocaleString()}곳까지 받았습니다.` : ct.left ? `${ct.left.toLocaleString()}곳은 정보를 받지 못했습니다. "이어서 불러오기"를 다시 눌러 보세요.` : `다 받았습니다. 모두 ${ct.all.toLocaleString()}곳입니다.`;
+    K.msg = K.stop ? `멈췄습니다. ${ct.done.toLocaleString()} / ${ct.all.toLocaleString()}곳까지 받았습니다.` : ct.left ? `${ct.left.toLocaleString()}곳은 연락처 정보를 받지 못했습니다. "이어서 불러오기"를 다시 눌러 보세요.${K.infoErr ? `\n이유: ${K.infoErr}` : ''}` : `다 받았습니다. 모두 ${ct.all.toLocaleString()}곳입니다.`;
   } catch (e) {
     kaptSave();
     K.msg = e.message;
@@ -1162,6 +1162,7 @@ async function drawKapt() {
       const line = (t, x) => `${t}: ${x.ok ? `✅ 정상${x.n ? '' : ' (결과 0건)'}` : `❌ ${x.error}`}`;
       K.msg = `${line('① 단지 목록제공 서비스', r.list)}\n${line('② 기본 정보제공 서비스(전화·팩스)', r.info)}`;
       const tr = [].concat(r.list.trace || [], r.info.trace || []);
+      const sm = r.info && r.info.sample; if (sm) K.msg += `\n예) ${sm.kaptName || ''} · 전화 ${sm.kaptTel || '(없음)'} · 팩스 ${sm.kaptFax || '(없음)'}` + (sm.kaptTel ? '' : `\n받은 항목: ${Object.keys(sm).join(', ')}`);
       if (!(r.list.ok && r.info.ok) && tr.length) K.msg += '\n\n— 응답 내용 (클로드에게 보여 주세요) —\n' + tr.join('\n');
     } catch (e) { K.msg = e.message; }
     drawKapt();
