@@ -39,6 +39,15 @@ async function call(eps, params, trace) {
       if (/NO_OPENAPI_SERVICE|NO OPENAPI|NODATA/i.test(t)) { last = `${ep} 응답 없음`; continue; }
       last = `알 수 없는 응답 (${r.status})`; continue;
     }
+    // 공공데이터포털 게이트웨이 오류 (JSON 모양): 인증키 미등록 · 폐기된 서비스 · 호출 한도
+    const gw = j.OpenAPI_ServiceResponse && j.OpenAPI_ServiceResponse.cmmMsgHeader;
+    if (gw) {
+      const code = String(gw.returnReasonCode || ''), msg = String(gw.errMsg || '');
+      if (code === '12' || /NO_OPENAPI/i.test(msg)) { last = `${ep} 폐기됨`; continue; }
+      if (code === '22' || /LIMITED/i.test(msg)) throw new Error('오늘 쓸 수 있는 공공데이터 호출 횟수를 다 썼습니다. 내일 "이어서 불러오기"를 눌러 주세요.');
+      if (/^(20|30|31|32|33)$/.test(code) || /SERVICE_KEY|ACCESS_DENIED/i.test(msg)) throw new Error('공공데이터포털에서 이 인증키로 "국토교통부_공동주택 단지 목록제공 서비스"(와 "공동주택 기본 정보제공 서비스") 활용신청이 아직 승인·등록되지 않았습니다. data.go.kr → 마이페이지 → 활용신청 현황을 확인해 주세요. 신청 직후라면 1~2시간 뒤 다시 해 보세요.');
+      last = `${ep}: ${msg || code}`; continue;
+    }
     const head = (j.response && j.response.header) || j.header || {};
     if (head.resultCode && !/^0+$/.test(String(head.resultCode))) {
       if (String(head.resultCode) === '22') throw new Error('오늘 쓸 수 있는 공공데이터 호출 횟수를 다 썼습니다. 내일 "이어서 불러오기"를 눌러 주세요.');
