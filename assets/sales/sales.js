@@ -1129,6 +1129,7 @@ async function drawKapt() {
       <div class="btns">
         ${K.run ? '<button class="btn btn-line" type="button" id="kp-stop">⏸ 멈추기</button>' : `<button class="btn btn-cta" type="button" id="kp-go">${started && !ready ? '▶ 이어서 불러오기' : ready ? '↻ 새로 받은 지역 불러오기' : '▶ 불러오기'}</button>`}
         ${!K.run && started ? '<button class="btn btn-line btn-sm" type="button" id="kp-reset">처음부터 다시</button>' : ''}
+        ${K.run ? '' : '<button class="btn btn-line btn-sm" type="button" id="kp-check">🔎 연결 점검</button>'}
       </div>
       <div style="height:10px;background:var(--line);border-radius:6px;overflow:hidden;margin:10px 0 4px"><div id="kp-bar" style="height:100%;width:${pct}%;background:var(--brand);transition:width .3s"></div></div>
       <p id="kp-msg" role="status" style="margin:0;font-weight:700;white-space:pre-wrap;word-break:break-all">${esc(K.msg || (started ? `${ct.done.toLocaleString()} / ${ct.all.toLocaleString()}곳 받음` : '아직 받은 것이 없습니다.'))}</p>
@@ -1154,6 +1155,17 @@ async function drawKapt() {
   if ($$('#kp-sall')) $$('#kp-sall').onclick = () => setS(KAPT_SIDO.map((x) => x[0]));
   if ($$('#kp-snone')) $$('#kp-snone').onclick = () => setS([]);
   if ($$('#kp-go')) $$('#kp-go').onclick = () => { if (!db.sidos.length) { K.msg = '지역을 하나 이상 골라 주세요.'; kaptPaint(); return; } kaptRun(); };
+  if ($$('#kp-check')) $$('#kp-check').onclick = async () => {
+    K.msg = '공공데이터 연결을 점검하는 중…'; kaptPaint();
+    try {
+      const r = await api('/api/kapt', { action: 'check' });
+      const line = (t, x) => `${t}: ${x.ok ? `✅ 정상${x.n ? '' : ' (결과 0건)'}` : `❌ ${x.error}`}`;
+      K.msg = `${line('① 단지 목록제공 서비스', r.list)}\n${line('② 기본 정보제공 서비스(전화·팩스)', r.info)}`;
+      const tr = [].concat(r.list.trace || [], r.info.trace || []);
+      if (!(r.list.ok && r.info.ok) && tr.length) K.msg += '\n\n— 응답 내용 (클로드에게 보여 주세요) —\n' + tr.join('\n');
+    } catch (e) { K.msg = e.message; }
+    drawKapt();
+  };
   if ($$('#kp-stop')) $$('#kp-stop').onclick = () => { K.stop = true; K.msg = '멈추는 중…'; kaptPaint(); };
   if ($$('#kp-reset')) $$('#kp-reset').onclick = () => { if (!confirm('지금까지 받은 아파트 명단을 지우고 처음부터 다시 받을까요?')) return; K.db = { sidos: db.sidos, listed: {}, list: {}, info: {} }; kaptSave(); K.msg = ''; drawKapt(); };
   $$('#kp-sf').onchange = (e) => { K.sidoF = e.target.value; drawKapt(); };

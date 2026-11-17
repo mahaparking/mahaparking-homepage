@@ -20,7 +20,7 @@ const LIST_EP = ['AptListService4/getSidoAptList4', 'AptListService3/getSidoAptL
 const INFO_EP = ['AptBasisInfoServiceV5/getAphusBassInfoV5', 'AptBasisInfoServiceV4/getAphusBassInfoV4', 'AptBasisInfoServiceV3/getAphusBassInfoV3', 'AptBasisInfoService1/getAphusBassInfo'];
 
 async function call(eps, params, trace) {
-  let last = '', emptyBody = null;
+  let last = '', emptyBody = null, notReg = false;
   const tr = (m) => { if (trace) trace.push(m); };
   for (const ep of eps) {
     const q = new URLSearchParams({ serviceKey: KEY(), _type: 'json', ...params });
@@ -34,7 +34,7 @@ async function call(eps, params, trace) {
     if (!j) {
       if (/SERVICE_KEY|SERVICE KEY|등록되지 않은|LIMITED_NUMBER|LIMITED NUMBER/i.test(t)) {
         if (/LIMITED/i.test(t)) throw new Error('오늘 쓸 수 있는 공공데이터 호출 횟수를 다 썼습니다. 내일 "이어서 불러오기"를 눌러 주세요.');
-        throw new Error('공공데이터 인증키가 맞지 않거나, 이 서비스 활용신청이 아직 승인되지 않았습니다.');
+        notReg = true; last = `${ep} 인증키 미등록`; continue;
       }
       if (/NO_OPENAPI_SERVICE|NO OPENAPI|NODATA/i.test(t)) { last = `${ep} 응답 없음`; continue; }
       last = `알 수 없는 응답 (${r.status})`; continue;
@@ -45,13 +45,13 @@ async function call(eps, params, trace) {
       const code = String(gw.returnReasonCode || ''), msg = String(gw.errMsg || '');
       if (code === '12' || /NO_OPENAPI/i.test(msg)) { last = `${ep} 폐기됨`; continue; }
       if (code === '22' || /LIMITED/i.test(msg)) throw new Error('오늘 쓸 수 있는 공공데이터 호출 횟수를 다 썼습니다. 내일 "이어서 불러오기"를 눌러 주세요.');
-      if (/^(20|30|31|32|33)$/.test(code) || /SERVICE_KEY|ACCESS_DENIED/i.test(msg)) throw new Error('공공데이터포털에서 이 인증키로 "국토교통부_공동주택 단지 목록제공 서비스"(와 "공동주택 기본 정보제공 서비스") 활용신청이 아직 승인·등록되지 않았습니다. data.go.kr → 마이페이지 → 활용신청 현황을 확인해 주세요. 신청 직후라면 1~2시간 뒤 다시 해 보세요.');
+      if (/^(20|30|31|32|33)$/.test(code) || /SERVICE_KEY|ACCESS_DENIED/i.test(msg)) { notReg = true; last = `${ep} 인증키 미등록`; continue; }   // 다른 판 번호로 신청됐을 수 있어 다음 것도 시도
       last = `${ep}: ${msg || code}`; continue;
     }
     const head = (j.response && j.response.header) || j.header || {};
     if (head.resultCode && !/^0+$/.test(String(head.resultCode))) {
       if (String(head.resultCode) === '22') throw new Error('오늘 쓸 수 있는 공공데이터 호출 횟수를 다 썼습니다. 내일 "이어서 불러오기"를 눌러 주세요.');
-      if (/30|31|32|33/.test(String(head.resultCode))) throw new Error('공공데이터 인증키가 맞지 않거나, 이 서비스 활용신청이 아직 승인되지 않았습니다.');
+      if (/30|31|32|33/.test(String(head.resultCode))) { notReg = true; last = `${ep} 인증키 미등록`; continue; }
       last = head.resultMsg || `오류 ${head.resultCode}`; continue;
     }
     const body = (j.response && j.response.body) || j.body || {};
@@ -59,6 +59,7 @@ async function call(eps, params, trace) {
     return body;
   }
   if (emptyBody) return emptyBody;
+  if (notReg) throw new Error(`공공데이터포털에 이 인증키가 아직 등록되지 않았습니다 (${eps === LIST_EP ? '단지 목록제공 서비스' : '기본 정보제공 서비스'}). data.go.kr → 마이페이지 → 활용신청 현황에서 "승인"인지 확인해 주세요. 승인 직후에는 공공데이터포털 쪽 반영에 몇 시간(길게는 하루) 걸릴 수 있습니다. 아래 [🔎 연결 점검]으로 다시 확인해 보세요.`);
   throw new Error(last || '공공데이터를 불러오지 못했습니다.');
 }
 
@@ -120,7 +121,16 @@ module.exports = async (req, res) => {
       return send(res, 200, { info: out });
     }
 
-    return send(res, 400, { error: 'action 은 list 또는 info 입니다.' });
+    if (b.action === 'check') {
+      const out = {};
+      for (const [name, eps, params] of [['list', LIST_EP, { sidoCode: '11', pageNo: '1', numOfRows: '1' }], ['info', INFO_EP, { kaptCode: 'A10027875' }]]) {
+        const trace = [];
+        try { const body = await call(eps, params, trace); out[name] = { ok: true, n: items(body).length, trace }; } catch (e) { out[name] = { ok: false, error: e.message, trace }; }
+      }
+      return send(res, 200, out);
+    }
+
+    return send(res, 400, { error: 'action 은 list · info · check 입니다.' });
   } catch (e) {
     return send(res, 502, { error: e.message || '공공데이터를 불러오지 못했습니다.' });
   }
