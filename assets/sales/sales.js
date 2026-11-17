@@ -978,6 +978,29 @@ setInterval(() => { if (!document.hidden) { if (D.loaded) { Promise.all([sb.from
 /* ---------- 🏢 아파트 명단 (공공데이터: 국토교통부 공동주택 단지 목록·기본 정보) ---------- */
 const KAPT_SIDO = [['11', '서울'], ['41', '경기'], ['28', '인천'], ['26', '부산'], ['27', '대구'], ['29', '광주'], ['30', '대전'], ['31', '울산'], ['36', '세종'], ['51', '강원'], ['43', '충북'], ['44', '충남'], ['52', '전북'], ['46', '전남'], ['47', '경북'], ['48', '경남'], ['50', '제주']];
 const KAPT_KEY = 'maha_kapt_v1';
+/* 공공데이터 항목 이름 → 한글 (기본 정보 + 상세 정보). 목록에 없는 항목은 원래 이름 그대로 엑셀에 넣습니다. */
+const KAPT_LABELS = {
+  kaptCode: '단지코드', kaptName: '단지명', codeAptNm: '단지 분류', kaptAddr: '법정동 주소', doroJuso: '도로명 주소', zipcode: '우편번호', bjdCode: '법정동코드',
+  kaptTel: '관리사무소 전화', kaptFax: '관리사무소 팩스', kaptUrl: '홈페이지',
+  codeSaleNm: '분양 형태', codeHeatNm: '난방 방식', codeHallNm: '복도 유형', codeMgrNm: '관리 방식', kaptUsedate: '사용승인일',
+  kaptTarea: '연면적(㎡)', kaptMarea: '관리비 부과면적(㎡)', privArea: '주거전용면적(㎡)', kaptDongCnt: '동 수', kaptdaCnt: '세대 수', hoCnt: '호 수',
+  kaptMparea60: '전용 60㎡ 이하 세대', kaptMparea85: '전용 60~85㎡ 세대', kaptMparea135: '전용 85~135㎡ 세대', kaptMparea136: '전용 135㎡ 초과 세대',
+  kaptMparea_60: '전용 60㎡ 이하 세대', kaptMparea_85: '전용 60~85㎡ 세대', kaptMparea_135: '전용 85~135㎡ 세대', kaptMparea_136: '전용 135㎡ 초과 세대',
+  kaptBcompany: '시공사', kaptAcompany: '시행사', kaptTopFloor: '최고 층수', ktownFlrNo: '지상 층수', kaptBaseFloor: '지하 층수', kaptdEcntp: '승강기(승객용)',
+  codeMgr: '일반관리 방식', kaptMgrCnt: '일반관리 인원', kaptCcompany: '일반관리 계약업체(위탁관리회사)',
+  codeSec: '경비관리 방식', kaptdScnt: '경비 인원', kaptdSecCom: '경비 계약업체',
+  codeClean: '청소관리 방식', kaptdClcnt: '청소 인원', codeGarbage: '음식물 처리 방법',
+  codeDisinf: '소독관리 방식', kaptdDcnt: '연간 소독 횟수', disposalType: '소독 방법',
+  codeStr: '건물 구조', kaptdEcapa: '수전 용량', codeEcon: '세대 전기 계약 방식', codeEmgr: '전기안전관리자 선임', codeFalarm: '화재수신반 방식', codeWsupply: '급수 방식',
+  codeElev: '승강기 관리 형태', kaptdEcnt: '승강기 대수',
+  kaptdPcnt: '주차대수(지상)', kaptdPcntu: '주차대수(지하)', codeNet: '주차관제·홈네트워크', kaptdCccnt: 'CCTV 대수',
+  groundElChargerCnt: '전기차 충전기(지상)', undergroundElChargerCnt: '전기차 충전기(지하)',
+  welfareFacility: '부대·복리시설', convenientFacility: '편의시설', educationFacility: '교육시설',
+  kaptdWtimebus: '버스정류장 거리', subwayLine: '지하철 호선', subwayStation: '지하철역', kaptdWtimesub: '지하철역 거리',
+  useYn: '사용 여부', _detailError: '상세 정보 오류',
+};
+const kLabel = (k) => KAPT_LABELS[k] || k;
+
 const K = { run: false, stop: false, msg: '', sidoF: 'all', q: '', db: null };
 /* 전국 2만 곳은 localStorage(5MB)에 다 안 들어가서 IndexedDB에 저장합니다. */
 const kIdb = () => new Promise((ok, no) => { const r = indexedDB.open('maha_kapt', 1); r.onupgradeneeded = () => r.result.createObjectStore('kv'); r.onsuccess = () => ok(r.result); r.onerror = () => no(r.error); });
@@ -1003,7 +1026,7 @@ const kaptRows = () => {
 function kaptCount() {
   const db = K.db;
   const all = Object.values(db.list).filter((a) => db.sidos.includes(a.sc));
-  const done = all.filter((a) => db.info[a.code]).length;
+  const done = all.filter((a) => db.info[a.code] && db.info[a.code].raw).length;
   const listedAll = db.sidos.every((c) => db.listed[c]);
   return { all: all.length, done, listedAll, left: all.length - done };
 }
@@ -1028,8 +1051,8 @@ async function kaptRun() {
       if (!K.stop && got > 0) db.listed[sc] = true;   // 0곳이면 다음에 다시 받아 보기
       kaptSave();
     }
-    const todo = Object.values(db.list).filter((a) => db.sidos.includes(a.sc) && !db.info[a.code]).map((a) => a.code);
-    const CH = 24;
+    const todo = Object.values(db.list).filter((a) => db.sidos.includes(a.sc) && !(db.info[a.code] && db.info[a.code].raw)).map((a) => a.code);
+    const CH = 16;
     const chunks = [];
     for (let i = 0; i < todo.length; i += CH) chunks.push(todo.slice(i, i + CH));
     let n = 0; K.infoErr = '';
@@ -1072,11 +1095,18 @@ async function kaptExcel(list) {
   if (!window.XLSX) {
     await new Promise((ok, no) => { const sc = document.createElement('script'); sc.src = 'https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js'; sc.onload = ok; sc.onerror = () => no(new Error('엑셀 도구를 불러오지 못했습니다.')); document.head.appendChild(sc); });
   }
-  const head = ['시·도', '시·군·구', '읍·면·동', '단지명', '관리사무소 전화', '관리사무소 팩스', '우편번호', '도로명 주소', '지번 주소', '세대수', '동수', '관리 방식', '사용승인일', '단지코드'];
-  const rows = list.map((x) => [x.sido || '', x.sigungu || '', x.dong || '', x.name || '', tel(x.tel), tel(x.fax), x.zip || '', x.doro || '', x.addr || '', x.households || '', x.dongs || '', x.mgr || '', x.usedate ? String(x.usedate).replace(/^(\d{4})(\d{2})(\d{2})$/, '$1-$2-$3') : '', x.code]);
+  const head = ['시·도', '시·군·구', '읍·면·동', '단지명', '관리사무소 전화', '관리사무소 팩스', '우편번호', '도로명 주소', '지번 주소', '세대수', '동수', '주차대수(합)', '관리 방식', '사용승인일', '단지코드'];
+  const shown = new Set(['kaptCode', 'kaptName', 'kaptTel', 'kaptFax', 'zipcode', 'doroJuso', 'kaptAddr', 'kaptdaCnt', 'kaptDongCnt', 'codeMgrNm', 'kaptUsedate']);
+  const extra = [];
+  list.forEach((x) => Object.keys(x.raw || {}).forEach((k) => { if (!shown.has(k) && !extra.includes(k)) extra.push(k); }));
+  extra.sort((a, b) => (Object.keys(KAPT_LABELS).indexOf(a) + 1 || 999) - (Object.keys(KAPT_LABELS).indexOf(b) + 1 || 999));
+  const ud = (v) => (v ? String(v).replace(/^(\d{4})(\d{2})(\d{2})$/, '$1-$2-$3') : '');
+  const rows = list.map((x) => [x.sido || '', x.sigungu || '', x.dong || '', x.name || '', tel(x.tel), tel(x.fax), x.zip || '', x.doro || '', x.addr || '', x.households || '', x.dongs || '', x.parking || '', x.mgr || '', ud(x.usedate), x.code]
+    .concat(extra.map((k) => { const v = (x.raw || {})[k]; return v === undefined ? '' : /^\d+(\.\d+)?$/.test(v) && !/Code|zip|Tel|Fax/i.test(k) ? Number(v) : v; })));
+  head.push(...extra.map(kLabel));
   const ws = XLSX.utils.aoa_to_sheet([head].concat(rows));
-  ws['!cols'] = [6, 10, 10, 26, 15, 15, 8, 40, 40, 7, 6, 10, 11, 11].map((w) => ({ wch: w }));
-  ws['!autofilter'] = { ref: `A1:N${rows.length + 1}` };
+  ws['!cols'] = [6, 10, 10, 26, 15, 15, 8, 40, 40, 7, 6, 9, 10, 11, 11].concat(extra.map(() => 14)).map((w) => ({ wch: w }));
+  ws['!autofilter'] = { ref: XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: rows.length, c: head.length - 1 } }) };
   ws['!freeze'] = { xSplit: 0, ySplit: 1 };
   const note = XLSX.utils.aoa_to_sheet([
     ['마하파킹 — 아파트 관리사무소 연락처'],
@@ -1143,8 +1173,8 @@ async function drawKapt() {
       </div>
       <div class="btns"><button class="btn btn-primary" type="button" id="kp-xlsx"${list.length ? '' : ' disabled'}>⬇ 엑셀 파일로 저장</button><button class="btn btn-line" type="button" id="kp-imp"${list.length && !K.run ? '' : ' disabled'}>＋ 보이는 곳을 고객사 리스트에 넣기</button></div>
       <p class="hint" style="margin:6px 0 0">지역·검색으로 좁힌 그대로 저장됩니다. 고객사 리스트에 넣으면 우편(DM) 라벨 인쇄와 전화 영업에 바로 쓸 수 있습니다.</p>
-      <div class="tbl-wrap" style="margin-top:10px;max-height:420px;overflow:auto"><table><thead><tr><th>지역</th><th>단지명 · 주소</th><th>관리사무소 전화</th><th>팩스</th><th>세대</th></tr></thead><tbody>
-        ${show.length ? show.map((x) => `<tr><td>${esc([x.sigungu, x.dong].filter(Boolean).join(' '))}</td><td><b>${esc(x.name)}</b>${siteByName(x.name) ? ' <span class="status st-sent">등록됨</span>' : ''}${x.doro || x.addr ? `<br><span class="hint">${x.zip ? '(' + esc(x.zip) + ') ' : ''}${esc(x.doro || x.addr)}</span>` : ''}</td><td style="white-space:nowrap">${x.tel ? `<a href="tel:${digits(x.tel)}">${esc(tel(x.tel))}</a>` : '<span class="hint">-</span>'}</td><td style="white-space:nowrap">${esc(tel(x.fax)) || '<span class="hint">-</span>'}</td><td>${x.households || ''}</td></tr>`).join('') : '<tr><td colspan="5" class="empty">받은 단지가 없습니다.</td></tr>'}
+      <div class="tbl-wrap" style="margin-top:10px;max-height:420px;overflow:auto"><table><thead><tr><th>지역</th><th>단지명 · 주소 <span class="hint" style="font-weight:400">(누르면 전체 정보)</span></th><th>관리사무소 전화</th><th>팩스</th><th>세대</th><th>주차</th></tr></thead><tbody>
+        ${show.length ? show.map((x) => `<tr data-kinfo="${esc(x.code)}" style="cursor:pointer"><td>${esc([x.sigungu, x.dong].filter(Boolean).join(' '))}</td><td><b>${esc(x.name)}</b>${siteByName(x.name) ? ' <span class="status st-sent">등록됨</span>' : ''}${x.doro || x.addr ? `<br><span class="hint">${x.zip ? '(' + esc(x.zip) + ') ' : ''}${esc(x.doro || x.addr)}</span>` : ''}</td><td style="white-space:nowrap">${x.tel ? `<a href="tel:${digits(x.tel)}">${esc(tel(x.tel))}</a>` : '<span class="hint">-</span>'}</td><td style="white-space:nowrap">${esc(tel(x.fax)) || '<span class="hint">-</span>'}</td><td>${x.households || ''}</td><td>${x.parking || ''}</td></tr>`).join('') : '<tr><td colspan="6" class="empty">받은 단지가 없습니다.</td></tr>'}
       </tbody></table></div>
       ${list.length > show.length ? `<p class="hint">화면에는 앞의 300곳만 보입니다. 엑셀에는 ${list.length.toLocaleString()}곳이 모두 들어갑니다.</p>` : ''}
     </div>
@@ -1160,10 +1190,10 @@ async function drawKapt() {
     try {
       const r = await api('/api/kapt', { action: 'check' });
       const line = (t, x) => `${t}: ${x.ok ? `✅ 정상${x.n ? '' : ' (결과 0건)'}` : `❌ ${x.error}`}`;
-      K.msg = `${line('① 단지 목록제공 서비스', r.list)}\n${line('② 기본 정보제공 서비스(전화·팩스)', r.info)}`;
-      const tr = [].concat(r.list.trace || [], r.info.trace || []);
+      K.msg = `${line('① 단지 목록제공 서비스', r.list)}\n${line('② 기본 정보제공 서비스(전화·팩스)', r.info)}${r.detail ? '\n' + line('③ 상세 정보(주차·관리업체 등)', r.detail) : ''}${r.detail && r.detail.sample ? ` · 주차 ${(+r.detail.sample.kaptdPcnt || 0) + (+r.detail.sample.kaptdPcntu || 0)}대` : ''}`;
+      const tr = [].concat(r.list.trace || [], r.info.trace || [], (r.detail && !r.detail.ok && r.detail.trace) || []);
       const sm = r.info && r.info.sample; if (sm) K.msg += `\n예) ${sm.kaptName || ''} · 전화 ${sm.kaptTel || '(없음)'} · 팩스 ${sm.kaptFax || '(없음)'}` + (sm.kaptTel ? '' : `\n받은 항목: ${Object.keys(sm).join(', ')}`);
-      if (!(r.list.ok && r.info.ok) && tr.length) K.msg += '\n\n— 응답 내용 (클로드에게 보여 주세요) —\n' + tr.join('\n');
+      if (!(r.list.ok && r.info.ok && (!r.detail || r.detail.ok)) && tr.length) K.msg += '\n\n— 응답 내용 (클로드에게 보여 주세요) —\n' + tr.join('\n');
     } catch (e) { K.msg = e.message; }
     drawKapt();
   };
@@ -1173,4 +1203,11 @@ async function drawKapt() {
   $$('#kp-q').onchange = (e) => { K.q = e.target.value; drawKapt(); };
   $$('#kp-xlsx').onclick = async () => { $$('#kp-xlsx').disabled = true; try { await kaptExcel(list); } catch (e) { K.msg = e.message; kaptPaint(); } $$('#kp-xlsx').disabled = false; };
   $$('#kp-imp').onclick = () => kaptImport(list);
+  root.querySelectorAll('[data-kinfo]').forEach((tr) => { tr.onclick = (e) => {
+    if (e.target.closest('a')) return;
+    const x = list.find((y) => y.code === tr.dataset.kinfo); if (!x) return;
+    const raw = x.raw || {};
+    const keys = Object.keys(raw).sort((a, b) => (Object.keys(KAPT_LABELS).indexOf(a) + 1 || 999) - (Object.keys(KAPT_LABELS).indexOf(b) + 1 || 999));
+    modal(`<h3>${esc(x.name)}</h3>${keys.length ? `<div class="tbl-wrap" style="max-height:60vh;overflow:auto"><table><tbody>${keys.map((k) => `<tr><th style="white-space:nowrap;text-align:left">${esc(kLabel(k))}</th><td>${esc(/Tel|Fax/.test(k) ? tel(raw[k]) : raw[k])}</td></tr>`).join('')}</tbody></table></div>` : '<p class="hint">아직 상세 정보를 받지 않았습니다. "이어서 불러오기"를 눌러 주세요.</p>'}<div class="btns"><button class="btn btn-line" data-close>닫기</button></div>`);
+  }; });
 }

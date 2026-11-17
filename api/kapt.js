@@ -17,6 +17,7 @@ const BASE = 'https://apis.data.go.kr/1613000';
 const KEY = () => { const k = String(process.env.DATA_GO_KR_KEY || '').trim(); try { return /%[0-9A-F]{2}/i.test(k) ? decodeURIComponent(k) : k; } catch (e) { return k; } };
 // 기관이 판 번호를 올리면 이름이 바뀌어서, 새 것부터 차례로 시도합니다.
 const LIST_EP = ['AptListService4/getSidoAptList4', 'AptListService3/getSidoAptList3', 'AptListService2/getSidoAptList'];
+const DTL_EP = ['AptBasisInfoServiceV5/getAphusDtlInfoV5', 'AptBasisInfoServiceV4/getAphusDtlInfoV4'];
 const INFO_EP = ['AptBasisInfoServiceV5/getAphusBassInfoV5', 'AptBasisInfoServiceV4/getAphusBassInfoV4', 'AptBasisInfoServiceV3/getAphusBassInfoV3', 'AptBasisInfoService1/getAphusBassInfo'];
 
 async function call(eps, params, trace) {
@@ -104,12 +105,18 @@ module.exports = async (req, res) => {
           try {
             const body = await call(INFO_EP, { kaptCode: code });
             const x = items(body)[0] || body.item || {};
+            // 상세 정보(관리·경비·주차·CCTV·승강기·충전기 등)는 실패해도 기본 정보는 살립니다.
+            let d = {};
+            if (b.detail !== false) { try { const db2 = await call(DTL_EP, { kaptCode: code }); d = items(db2)[0] || db2.item || {}; } catch (e) { if (/호출 횟수/.test(e.message)) d = { _detailError: '호출 한도' }; else d = { _detailError: e.message }; } }
+            const raw = {};
+            Object.entries(Object.assign({}, x, d)).forEach(([k, v]) => { if (v !== null && v !== undefined && String(v).trim() !== '') raw[k] = typeof v === 'object' ? JSON.stringify(v) : String(v).trim(); });
             out.push({
-              code, ok: true,
+              code, ok: true, raw,
               name: str(x.kaptName), tel: str(x.kaptTel), fax: str(x.kaptFax), url: str(x.kaptUrl),
               addr: str(x.kaptAddr), doro: str(x.doroJuso), zip: str(x.zipcode),
               households: parseInt(x.kaptdaCnt || x.hoCnt, 10) || null, dongs: parseInt(x.kaptDongCnt, 10) || null,
               mgr: str(x.codeMgrNm || x.codeMgr), usedate: str(x.kaptUsedate),
+              parking: (parseInt(d.kaptdPcnt, 10) || 0) + (parseInt(d.kaptdPcntu, 10) || 0) || null,
             });
           } catch (e) {
             if (/호출 횟수|인증키/.test(e.message)) throw e;
@@ -117,13 +124,13 @@ module.exports = async (req, res) => {
           }
         }
       };
-      await Promise.all([1, 2, 3, 4, 5, 6].map(worker));
+      await Promise.all([1, 2, 3, 4, 5, 6, 7, 8].map(worker));
       return send(res, 200, { info: out });
     }
 
     if (b.action === 'check') {
       const out = {};
-      for (const [name, eps, params] of [['list', LIST_EP, { sidoCode: '11', pageNo: '1', numOfRows: '1' }], ['info', INFO_EP, { kaptCode: 'A10027875' }]]) {
+      for (const [name, eps, params] of [['list', LIST_EP, { sidoCode: '11', pageNo: '1', numOfRows: '1' }], ['info', INFO_EP, { kaptCode: 'A10027875' }], ['detail', DTL_EP, { kaptCode: 'A10027875' }]]) {
         const trace = [];
         try { const body = await call(eps, params, trace); const it = items(body)[0] || body.item || null; out[name] = { ok: true, n: items(body).length || (it ? 1 : 0), sample: it, trace }; } catch (e) { out[name] = { ok: false, error: e.message, trace }; }
       }
