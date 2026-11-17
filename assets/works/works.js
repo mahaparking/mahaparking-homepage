@@ -35,7 +35,7 @@ async function load() {
   root.innerHTML = '<p class="hint">불러오고 있습니다...</p>';
   const [w, q, s] = await Promise.all([
     sb.from('works').select('*').order('work_date', { ascending: true, nullsFirst: false }).limit(2000),
-    sb.from('quotes').select('id,quote_no,customer_name,title,supply,vat,total,quote_date').order('created_at', { ascending: false }).limit(300),
+    sb.from('quotes').select('id,quote_no,customer_name,title,supply,vat,total,quote_date,items').order('created_at', { ascending: false }).limit(300),
     sb.from('sites').select('id,name,address').order('name').limit(3000),
   ]);
   if (w.error) {
@@ -191,12 +191,13 @@ function edit(w, preset) {
   const isNew = !w;
   const W = Object.assign({ title: '', site_name: '', contact: '', phone: '', address: '', work_date: today(), start_time: '', end_time: '', status: 'planned', quote_id: null, supply: 0, vat: 0, costs: [], payments: [], invoice_date: '', memo: '' }, w || {}, preset || {});
   let costs = (W.costs || []).map((c) => Object.assign({}, c)), pays = (W.payments || []).map((p) => Object.assign({}, p));
+  let items = (W.items || []).map((x) => Object.assign({}, x));
+  if (!items.length) items = [{ name: '', qty: 1, price: '' }];
   if (isNew && !costs.length) costs = [{ name: '자재비', amount: '' }, { name: '출장비', amount: '' }];
   const qOpt = '<option value="">견적서 연결 안 함</option>' + D.quotes.map((q) => `<option value="${q.id}"${q.id === W.quote_id ? ' selected' : ''}>${esc(q.quote_no || '')} · ${esc(q.customer_name || '')} · ${won(q.supply)}원</option>`).join('');
   modal(`<h3>${isNew ? '작업 추가' : '작업 · 금액 · 수금'}</h3>
     <div class="wk-form">
-      <label class="f wk-span2" for="w-quote">견적서에서 불러오기 <span class="hint">(고른 뒤에도 금액·내용은 자유롭게 고칠 수 있습니다)</span><select id="w-quote">${qOpt}</select></label>
-      <label class="f wk-span2" for="w-title">작업 내용 *<input id="w-title" value="${esc(W.title)}" placeholder="예) 정문 차단바 교체 · 루프 재시공"></label>
+      <label class="f wk-span2" for="w-title">작업 제목 *<input id="w-title" value="${esc(W.title)}" placeholder="예) 정문 차단바 교체 · 루프 재시공"></label>
       <label class="f" for="w-site">현장 (단지·건물)<input id="w-site" list="w-sites" value="${esc(W.site_name)}" placeholder="예) OO아파트"><datalist id="w-sites">${D.sites.map((s) => `<option value="${esc(s.name)}">`).join('')}</datalist></label>
       <label class="f" for="w-contact">담당자<input id="w-contact" value="${esc(W.contact)}" placeholder="예) 김OO 소장님"></label>
       <label class="f" for="w-phone">연락처<input id="w-phone" value="${esc(W.phone)}" inputmode="tel"></label>
@@ -207,6 +208,11 @@ function edit(w, preset) {
       <label class="f" for="w-inv">계산서 발행일<input id="w-inv" type="date" value="${esc(W.invoice_date || '')}"></label>
     </div>
     <div class="wk-money">
+      <div class="wk-sec-h" style="margin-top:0"><b>작업 내역 · 금액</b><span class="hint">직접 적으면 공급가가 자동으로 더해집니다</span></div>
+      <div class="wk-items-h" aria-hidden="true"><span>내용</span><span>수량</span><span>단가 (원)</span><span>금액 (원)</span><span></span></div>
+      <div id="w-items"></div>
+      <div class="add-row" style="margin:6px 0 10px;align-items:center"><button type="button" class="mini" id="w-additem">+ 줄 추가</button>
+        <label class="hint" for="w-quote" style="display:flex;gap:6px;align-items:center;margin-left:auto">견적서에서 불러오기 (선택)<select id="w-quote" style="width:auto;max-width:280px">${qOpt}</select></label></div>
       <div class="wk-row3"><label class="f" for="w-sup">공급가 (원)<input id="w-sup" inputmode="numeric" value="${num(W.supply) ? won(W.supply) : ''}"></label>
         <label class="f" for="w-vat">부가세 (원) <button type="button" class="mini" id="w-vat10">10% 넣기</button><input id="w-vat" inputmode="numeric" value="${num(W.vat) ? won(W.vat) : ''}"></label>
         <div class="f"><span>합계</span><b id="w-tot" class="wk-big"></b></div></div>
@@ -221,6 +227,17 @@ function edit(w, preset) {
     <p class="hint" id="w-msg" role="status"></p>`);
   $('modal-box').classList.add('wide');
   const money = (el) => { el.addEventListener('input', () => { const p = el.selectionStart, before = el.value.length; const n = num(el.value); el.value = el.value.trim() === '' ? '' : won(n); const d = el.value.length - before; try { el.setSelectionRange(p + d, p + d); } catch (e) {} calc(); }); };
+  function lineAmt(x) { return x.amount !== undefined && x.amount !== '' && x.manual ? num(x.amount) : Math.round(num(x.qty || 0) * num(x.price)); }
+  function drawItems() {
+    $('w-items').innerHTML = items.map((x, i) => `<div class="wk-item"><input aria-label="작업 내용" data-in="${i}" value="${esc(x.name || '')}" placeholder="예) 양면 LED 차단바 교체"><input aria-label="수량" data-iq="${i}" inputmode="decimal" value="${esc(x.qty == null ? '' : x.qty)}"><input aria-label="단가" data-ip="${i}" inputmode="numeric" placeholder="0" value="${num(x.price) ? won(x.price) : ''}"><input aria-label="금액" data-ia="${i}" inputmode="numeric" placeholder="0" value="${lineAmt(x) ? won(lineAmt(x)) : ''}"><button type="button" class="row-del" data-ix="${i}" aria-label="줄 빼기">×</button></div>`).join('');
+    const sumItems = () => { const t = items.reduce((a, x) => a + lineAmt(x), 0); if (items.some((x) => (x.name || '').trim() || lineAmt(x))) { $('w-sup').value = t ? won(t) : ''; if ($('w-vat10').dataset.auto !== 'off') $('w-vat').value = t ? won(Math.round(t * 0.1)) : ''; } calc(); };
+    const refreshAmt = (i) => { const el = $('w-items').querySelector(`[data-ia="${i}"]`); if (el && !items[i].manual) el.value = lineAmt(items[i]) ? won(lineAmt(items[i])) : ''; };
+    $('w-items').querySelectorAll('[data-in]').forEach((el) => { el.oninput = () => { items[+el.dataset.in].name = el.value; if (!$('w-title').value.trim() && +el.dataset.in === 0) $('w-title').placeholder = el.value || '예) 정문 차단바 교체 · 루프 재시공'; }; });
+    $('w-items').querySelectorAll('[data-iq]').forEach((el) => { el.oninput = () => { const x = items[+el.dataset.iq]; x.qty = el.value; x.manual = false; refreshAmt(+el.dataset.iq); sumItems(); }; });
+    $('w-items').querySelectorAll('[data-ip]').forEach((el) => { money(el); el.addEventListener('input', () => { const x = items[+el.dataset.ip]; x.price = num(el.value); x.manual = false; refreshAmt(+el.dataset.ip); sumItems(); }); });
+    $('w-items').querySelectorAll('[data-ia]').forEach((el) => { money(el); el.addEventListener('input', () => { const x = items[+el.dataset.ia]; x.amount = num(el.value); x.manual = true; sumItems(); }); });
+    $('w-items').querySelectorAll('[data-ix]').forEach((b) => { b.onclick = () => { items.splice(+b.dataset.ix, 1); if (!items.length) items.push({ name: '', qty: 1, price: '' }); drawItems(); sumItems(); }; });
+  }
   function drawRows() {
     $('w-costs').innerHTML = costs.map((c, i) => `<div class="wk-line"><input aria-label="비용 이름" data-cn="${i}" value="${esc(c.name || '')}" list="w-costnames"><input aria-label="비용 금액" data-ca="${i}" inputmode="numeric" placeholder="금액" value="${num(c.amount) ? won(c.amount) : ''}"><button type="button" class="row-del" data-cx="${i}" aria-label="비용 빼기">×</button></div>`).join('') + `<datalist id="w-costnames">${COST_NAMES.map((n) => `<option value="${n}">`).join('')}</datalist>` || '';
     $('w-pays').innerHTML = pays.length ? pays.map((p, i) => `<div class="wk-line wk-line3"><input type="date" aria-label="입금일" data-pd="${i}" value="${esc(p.date || '')}"><input aria-label="입금액" data-pa="${i}" inputmode="numeric" placeholder="금액" value="${num(p.amount) ? won(p.amount) : ''}"><input aria-label="입금 메모" data-pm="${i}" placeholder="메모 (예: 계좌이체)" value="${esc(p.memo || '')}"><button type="button" class="row-del" data-px="${i}" aria-label="입금 빼기">×</button></div>`).join('') : '<p class="hint" style="margin:0">아직 입금 기록이 없습니다.</p>';
@@ -240,9 +257,13 @@ function edit(w, preset) {
     return { sup, vat, tot, paid };
   }
   money($('w-sup')); money($('w-vat'));
-  $('w-vat10').onclick = () => { $('w-vat').value = won(Math.round(num($('w-sup').value) * 0.1)); calc(); };
+  $('w-vat').addEventListener('input', () => { $('w-vat10').dataset.auto = 'off'; });
+  if (num(W.vat) && Math.round(num(W.supply) * 0.1) !== num(W.vat)) $('w-vat10').dataset.auto = 'off';
+  $('w-vat10').onclick = () => { $('w-vat10').dataset.auto = ''; $('w-vat').value = won(Math.round(num($('w-sup').value) * 0.1)); calc(); };
   $('w-quote').onchange = function () {
     const q = byId(D.quotes, this.value); if (!q) return;
+    const qi = (q.items || []).filter((r) => r.name || num(r.price)).map((r) => ({ name: [r.name, r.spec].filter(Boolean).join(' '), qty: r.qty == null ? 1 : r.qty, price: num(r.price) }));
+    if (qi.length) { items = qi; drawItems(); }
     $('w-sup').value = won(q.supply); $('w-vat').value = won(q.vat != null ? q.vat : Math.round(num(q.supply) * 0.1));
     if (!$('w-title').value.trim() && q.title) $('w-title').value = q.title;
     if (!$('w-site').value.trim() && q.customer_name) $('w-site').value = q.customer_name;
@@ -251,10 +272,13 @@ function edit(w, preset) {
   root.ownerDocument.querySelectorAll('[data-addcost]').forEach((b) => { b.onclick = () => { costs.push({ name: b.dataset.addcost, amount: '' }); drawRows(); const l = $('w-costs').querySelectorAll('[data-ca]'); if (l.length) l[l.length - 1].focus(); }; });
   $('w-addpay').onclick = () => { pays.push({ date: today(), amount: '', memo: '' }); drawRows(); const l = $('w-pays').querySelectorAll('[data-pa]'); if (l.length) l[l.length - 1].focus(); };
   $('w-payall').onclick = () => { const c = calc(); const left = Math.max(0, c.tot - c.paid); if (!left) { $('w-msg').textContent = '남은 금액이 없습니다.'; return; } pays.push({ date: today(), amount: left, memo: '' }); drawRows(); calc(); };
-  drawRows(); calc();
+  $('w-additem').onclick = () => { items.push({ name: '', qty: 1, price: '' }); drawItems(); const l = $('w-items').querySelectorAll('[data-in]'); if (l.length) l[l.length - 1].focus(); };
+  drawItems(); drawRows(); calc();
 
   $('w-save').onclick = async function () {
-    const title = $('w-title').value.trim(); if (!title) { $('w-msg').textContent = '작업 내용을 적어 주세요.'; $('w-title').focus(); return; }
+    const named = items.filter((x) => (x.name || '').trim());
+    const title = $('w-title').value.trim() || (named.length ? named[0].name.trim() + (named.length > 1 ? ` 외 ${named.length - 1}건` : '') : '');
+    if (!title) { $('w-msg').textContent = '작업 제목이나 작업 내역을 적어 주세요.'; $('w-title').focus(); return; }
     const c = calc(); let status = $('w-status').value;
     if (c.tot > 0 && c.paid >= c.tot && status !== 'canceled' && status !== 'paid') status = 'paid';   // 다 받으면 수금 완료로
     const siteName = $('w-site').value.trim(), site = D.sites.find((s) => s.name === siteName);
@@ -262,6 +286,7 @@ function edit(w, preset) {
       title, site_name: siteName || null, site_id: site ? site.id : null, contact: $('w-contact').value.trim() || null, phone: $('w-phone').value.trim() || null, address: $('w-addr').value.trim() || null,
       work_date: $('w-date').value || null, start_time: $('w-st').value || null, end_time: $('w-et').value || null, status,
       quote_id: $('w-quote').value || null, supply: c.sup, vat: c.vat, invoice_date: $('w-inv').value || null, memo: $('w-memo').value.trim() || null,
+      items: items.filter((x) => (x.name || '').trim() || lineAmt(x)).map((x) => ({ name: (x.name || '').trim(), qty: num(x.qty) || 0, price: num(x.price), amount: lineAmt(x), manual: !!x.manual })),
       costs: costs.filter((x) => num(x.amount)).map((x) => ({ name: (x.name || '').trim() || '비용', amount: num(x.amount) })),
       payments: pays.filter((p) => num(p.amount)).map((p) => ({ date: p.date || today(), amount: num(p.amount), memo: (p.memo || '').trim() })),
       updated_at: new Date().toISOString(),

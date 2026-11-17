@@ -21,6 +21,7 @@ create table if not exists public.works (
   request_id uuid references public.requests(id) on delete set null,
   supply numeric not null default 0,         -- 공급가 (견적서에서 불러와도 고칠 수 있음)
   vat numeric not null default 0,            -- 부가세
+  items jsonb not null default '[]'::jsonb,  -- 작업 내역 [{ name, qty, price, amount }] (직접 입력 · 견적서에서 불러오기)
   costs jsonb not null default '[]'::jsonb,  -- 비용 항목 [{ name, amount }]
   payments jsonb not null default '[]'::jsonb, -- 입금 기록 [{ date, amount, memo }]
   invoice_date date,                         -- 계산서 발행일
@@ -29,6 +30,9 @@ create table if not exists public.works (
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
+-- 예전에 만든 표에도 작업 내역 칸 더하기
+alter table public.works add column if not exists items jsonb not null default '[]'::jsonb;
+
 create index if not exists works_date_idx on public.works (work_date);
 create index if not exists works_status_idx on public.works (status);
 
