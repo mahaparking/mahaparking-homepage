@@ -9,7 +9,7 @@ const root = document.getElementById('sales-root');
 const D = { sites: [], managers: [], jobs: [], promos: [], sends: [], mails: [], settings: {}, loaded: false };
 const V = { ms: 'all', send2: { kind: 'all', st: 'all', q: '', worked: false }, mail: { ids: new Set(), kind: 'all', st: 'all', q: '', title: '', date: '' }, sub: 'managers', mq: '', mf: 'all', mk: 'all', sq: '', sf: 'all', sk: 'all', send: { promo: '', ids: new Set(), text: '', opened: new Set() } };
 
-const SUBS = [['managers', '담당자'], ['sites', '단지·건물'], ['promos', '홍보물'], ['send', '문자 보내기'], ['mail', '📮 우편'], ['history', '보낸 기록'], ['settings', '설정']];
+const SUBS = [['managers', '담당자'], ['sites', '단지·건물'], ['promos', '홍보물'], ['send', '문자 보내기'], ['mail', '📮 우편'], ['kapt', '🏢 아파트 명단'], ['history', '보낸 기록'], ['settings', '설정']];
 const SITE_KINDS = ['아파트', '건물·빌라', '기타'];
 /** 예전 값(빌라·오피스텔 등)도 세 가지로 묶어 보기 */
 const kindOf = (k) => (k === '아파트' ? '아파트' : /빌라|오피스텔|상가|건물/.test(k || '') ? '건물·빌라' : '기타');
@@ -144,7 +144,7 @@ function mount() {
   const nb = root.querySelector('#sl-need'); nb.textContent = need || ''; nb.classList.toggle('hidden', !need);
   if (V.sub === 'managers') { if (!V.webSeen) V.webSeen = seenAt(); markWebSeen(); }
   refreshBadge();
-  ({ managers: drawManagers, sites: drawSites, promos: drawPromos, send: drawSend, mail: drawMail, history: drawHistory, settings: drawSettings })[V.sub]();
+  ({ managers: drawManagers, sites: drawSites, promos: drawPromos, send: drawSend, mail: drawMail, kapt: drawKapt, history: drawHistory, settings: drawSettings })[V.sub]();
 }
 const body = () => root.querySelector('#sl-body');
 
@@ -973,3 +973,176 @@ if (tabBtn) tabBtn.addEventListener('click', () => { if (!D.loaded) load(); });
 const startBadge = () => { const v = document.getElementById('view-admin'); if (v && !v.classList.contains('hidden')) { refreshBadge(); return true; } return false; };
 if (!startBadge()) { const t = setInterval(() => { if (startBadge()) clearInterval(t); }, 1000); }
 setInterval(() => { if (!document.hidden) { if (D.loaded) { Promise.all([sb.from('managers').select('*').order('created_at', { ascending: false }), sb.from('sites').select('*').order('name')]).then(([m, x]) => { if (!m.error) D.managers = m.data; if (!x.error) D.sites = x.data; refreshBadge(); }); } else refreshBadge(); } }, 5 * 60 * 1000);
+
+
+/* ---------- 🏢 아파트 명단 (공공데이터: 국토교통부 공동주택 단지 목록·기본 정보) ---------- */
+const KAPT_SIDO = [['11', '서울'], ['41', '경기'], ['28', '인천'], ['30', '대전'], ['36', '세종'], ['43', '충북'], ['44', '충남']];
+const KAPT_KEY = 'maha_kapt_v1';
+const K = { run: false, stop: false, msg: '', sidoF: 'all', q: '', sel: null };
+function kaptLoad() {
+  if (K.db) return K.db;
+  try { K.db = JSON.parse(localStorage.getItem(KAPT_KEY)) || null; } catch (e) { K.db = null; }
+  if (!K.db) K.db = { sidos: ['11', '41', '30', '36', '43', '44'], listed: {}, list: {}, info: {} };
+  return K.db;
+}
+function kaptSave() {
+  try { localStorage.setItem(KAPT_KEY, JSON.stringify(K.db)); return true; } catch (e) { K.msg = '이 브라우저에 저장할 공간이 모자랍니다. 지금까지 받은 것은 엑셀로 먼저 저장해 두세요.'; return false; }
+}
+const kaptRows = () => {
+  const db = kaptLoad();
+  return Object.values(db.list).filter((a) => db.sidos.includes(a.sc)).map((a) => Object.assign({}, a, db.info[a.code] || {}, { name: (db.info[a.code] && db.info[a.code].name) || a.name }));
+};
+function kaptCount() {
+  const db = kaptLoad();
+  const all = Object.values(db.list).filter((a) => db.sidos.includes(a.sc));
+  const done = all.filter((a) => db.info[a.code]).length;
+  const listedAll = db.sidos.every((c) => db.listed[c]);
+  return { all: all.length, done, listedAll, left: all.length - done };
+}
+
+async function kaptRun() {
+  const db = kaptLoad();
+  K.run = true; K.stop = false; K.msg = '단지 목록을 받는 중…'; drawKapt();
+  try {
+    for (const sc of db.sidos) {
+      if (K.stop) break;
+      if (db.listed[sc]) continue;
+      let page = 1, got = 0, total = 1;
+      while (got < total && !K.stop) {
+        const r = await api('/api/kapt', { action: 'list', sido: sc, page });
+        r.list.forEach((x) => { db.list[x.code] = Object.assign(x, { sc }); });
+        got += r.list.length; total = r.total || got;
+        K.msg = `${KAPT_SIDO.find((x) => x[0] === sc)[1]} 단지 목록 ${got.toLocaleString()} / ${total.toLocaleString()}`; kaptPaint();
+        if (!r.list.length) break;
+        page++;
+      }
+      if (!K.stop) db.listed[sc] = true;
+      kaptSave();
+    }
+    const todo = Object.values(db.list).filter((a) => db.sidos.includes(a.sc) && !db.info[a.code]).map((a) => a.code);
+    const CH = 24;
+    const chunks = [];
+    for (let i = 0; i < todo.length; i += CH) chunks.push(todo.slice(i, i + CH));
+    let n = 0;
+    const worker = async () => {
+      while (chunks.length && !K.stop) {
+        const c = chunks.shift();
+        const r = await api('/api/kapt', { action: 'info', codes: c });
+        r.info.forEach((x) => { if (x.ok) db.info[x.code] = x; });
+        n += c.length;
+        if (n % 120 < CH) kaptSave();
+        const ct = kaptCount();
+        K.msg = `관리사무소 연락처 받는 중… ${ct.done.toLocaleString()} / ${ct.all.toLocaleString()}곳`; kaptPaint();
+      }
+    };
+    await Promise.all([worker(), worker(), worker()]);
+    kaptSave();
+    const ct = kaptCount();
+    K.msg = K.stop ? `멈췄습니다. ${ct.done.toLocaleString()} / ${ct.all.toLocaleString()}곳까지 받았습니다.` : ct.left ? `${ct.left.toLocaleString()}곳은 정보를 받지 못했습니다. "이어서 불러오기"를 다시 눌러 보세요.` : `다 받았습니다. 모두 ${ct.all.toLocaleString()}곳입니다.`;
+  } catch (e) {
+    kaptSave();
+    K.msg = e.message;
+  }
+  K.run = false; drawKapt();
+}
+
+function kaptPaint() {
+  const ct = kaptCount();
+  const m = root.querySelector('#kp-msg'); if (m) m.textContent = K.msg;
+  const b = root.querySelector('#kp-bar'); if (b) b.style.width = (ct.all ? Math.round((ct.done / ct.all) * 100) : 0) + '%';
+}
+
+function kaptFiltered() {
+  const qq = K.q.replace(/\s/g, '');
+  return kaptRows().filter((x) => (K.sidoF === 'all' || x.sc === K.sidoF) && (!qq || [x.name, x.sido, x.sigungu, x.dong, x.doro, x.addr].join(' ').replace(/\s/g, '').includes(qq)))
+    .sort((a, b) => (a.sc + a.sigungu + a.name).localeCompare(b.sc + b.sigungu + b.name, 'ko'));
+}
+
+async function kaptExcel(list) {
+  if (!window.XLSX) {
+    await new Promise((ok, no) => { const sc = document.createElement('script'); sc.src = 'https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js'; sc.onload = ok; sc.onerror = () => no(new Error('엑셀 도구를 불러오지 못했습니다.')); document.head.appendChild(sc); });
+  }
+  const head = ['시·도', '시·군·구', '읍·면·동', '단지명', '관리사무소 전화', '관리사무소 팩스', '도로명 주소', '지번 주소', '세대수', '동수', '관리 방식', '사용승인일', '단지코드'];
+  const rows = list.map((x) => [x.sido || '', x.sigungu || '', x.dong || '', x.name || '', tel(x.tel), tel(x.fax), x.doro || '', x.addr || '', x.households || '', x.dongs || '', x.mgr || '', x.usedate ? String(x.usedate).replace(/^(\d{4})(\d{2})(\d{2})$/, '$1-$2-$3') : '', x.code]);
+  const ws = XLSX.utils.aoa_to_sheet([head].concat(rows));
+  ws['!cols'] = [6, 10, 10, 26, 15, 15, 40, 40, 7, 6, 10, 11, 11].map((w) => ({ wch: w }));
+  ws['!autofilter'] = { ref: `A1:M${rows.length + 1}` };
+  ws['!freeze'] = { xSplit: 0, ySplit: 1 };
+  const note = XLSX.utils.aoa_to_sheet([
+    ['마하파킹 — 아파트 관리사무소 연락처'],
+    [`받은 날: ${today()}  ·  ${rows.length.toLocaleString()}곳`],
+    ['출처: 국토교통부 공동주택 단지 목록·기본 정보 (공공데이터포털, K-apt 등록 단지)'],
+    ['※ 전화·방문·우편(DM) 영업용입니다. 광고 문자·팩스는 받는 분이 미리 동의한 경우에만 보낼 수 있습니다 (정보통신망법 제50조).'],
+  ]);
+  note['!cols'] = [{ wch: 100 }];
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, '관리사무소 연락처');
+  XLSX.utils.book_append_sheet(wb, note, '안내');
+  const names = [...new Set(list.map((x) => x.sido).filter(Boolean))].join('_') || '아파트';
+  XLSX.writeFile(wb, `마하파킹_아파트관리사무소_${names}_${today()}.xlsx`);
+}
+
+async function kaptImport(list) {
+  const fresh = list.filter((x) => !siteByName(x.name));
+  if (!fresh.length) { K.msg = '모두 이미 고객사 리스트에 있습니다.'; kaptPaint(); return; }
+  if (!confirm(`${fresh.length.toLocaleString()}곳을 고객사 리스트(단지·건물)에 "영업 대상"으로 넣을까요?\n(이미 같은 이름이 있는 ${(list.length - fresh.length).toLocaleString()}곳은 건너뜁니다)`)) return;
+  const rows = fresh.map((x) => ({ name: x.name, kind: '아파트', region: [x.sido, x.sigungu].filter(Boolean).join(' ').replace(/특별시|광역시|특별자치시|특별자치도/g, '').replace(/도 /, ' ').trim() || null, address: x.doro || x.addr || null, office_tel: digits(x.tel) || null, office_fax: digits(x.fax) || null, households: x.households || null, status: 'lead', memo: `공공데이터 단지코드 ${x.code}`, updated_at: nowIso() }));
+  let done = 0;
+  try {
+    for (let i = 0; i < rows.length; i += 200) {
+      const got = await q(sb.from('sites').insert(rows.slice(i, i + 200)).select(), '고객사 리스트에 넣지 못했습니다.');
+      D.sites.push(...got); done += got.length;
+      K.msg = `고객사 리스트에 넣는 중… ${done.toLocaleString()} / ${rows.length.toLocaleString()}`; kaptPaint();
+    }
+    D.sites.sort((a, b) => a.name.localeCompare(b.name, 'ko'));
+    K.msg = `${done.toLocaleString()}곳을 고객사 리스트에 넣었습니다. (단지·건물 → 상태 "영업 대상")`;
+  } catch (e) { K.msg = `${done.toLocaleString()}곳까지 넣고 멈췄습니다: ${e.message}`; }
+  drawKapt();
+}
+
+function drawKapt() {
+  const db = kaptLoad();
+  const ct = kaptCount();
+  const started = Object.keys(db.list).length > 0;
+  const list = kaptFiltered();
+  const show = list.slice(0, 300);
+  const pct = ct.all ? Math.round((ct.done / ct.all) * 100) : 0;
+  const ready = ct.listedAll && !ct.left && ct.all;
+  body().innerHTML = `
+    <p class="hint">국토교통부 공공데이터(K-apt에 등록된 아파트)에서 <b>관리사무소 전화·팩스·주소·세대수</b>를 한꺼번에 받아 엑셀로 저장합니다. 빌라·작은 건물은 들어 있지 않습니다.</p>
+    <div class="sl-step"><b><span class="sl-no">1</span>지역 고르기</b>
+      <div class="add-row" style="margin:4px 0;flex-wrap:wrap">${KAPT_SIDO.map(([c, n]) => `<label class="sl-chk"><input type="checkbox" data-ksido="${c}"${db.sidos.includes(c) ? ' checked' : ''}${K.run ? ' disabled' : ''}> ${n}${db.listed[c] ? ' <span class="hint">✓</span>' : ''}</label>`).join('')}</div>
+    </div>
+    <div class="sl-step"><b><span class="sl-no">2</span>불러오기</b>
+      <div class="btns">
+        ${K.run ? '<button class="btn btn-line" type="button" id="kp-stop">⏸ 멈추기</button>' : `<button class="btn btn-cta" type="button" id="kp-go">${started && !ready ? '▶ 이어서 불러오기' : ready ? '↻ 새로 받은 지역 불러오기' : '▶ 불러오기'}</button>`}
+        ${!K.run && started ? '<button class="btn btn-line btn-sm" type="button" id="kp-reset">처음부터 다시</button>' : ''}
+      </div>
+      <div style="height:10px;background:var(--line);border-radius:6px;overflow:hidden;margin:10px 0 4px"><div id="kp-bar" style="height:100%;width:${pct}%;background:var(--brand);transition:width .3s"></div></div>
+      <p id="kp-msg" role="status" style="margin:0;font-weight:700">${esc(K.msg || (started ? `${ct.done.toLocaleString()} / ${ct.all.toLocaleString()}곳 받음` : '아직 받은 것이 없습니다.'))}</p>
+      <p class="hint" style="margin:4px 0 0">수도권·충청 전체는 약 1만 곳이라 10~20분쯤 걸립니다. 받는 동안 이 화면을 켜 두세요. 공공데이터 하루 사용량을 넘으면 멈추고, 다음 날 <b>이어서 불러오기</b>를 누르면 남은 곳부터 받습니다.</p>
+    </div>
+    <div class="sl-step"><b><span class="sl-no">3</span>엑셀로 저장 · 고객사 리스트에 넣기</b>
+      <div class="add-row" style="margin:4px 0;align-items:center">
+        <select id="kp-sf" style="width:auto"><option value="all">전체 지역</option>${KAPT_SIDO.filter(([c]) => db.sidos.includes(c)).map(([c, n]) => `<option value="${c}"${K.sidoF === c ? ' selected' : ''}>${n}</option>`).join('')}</select>
+        <input id="kp-q" placeholder="시·군·구, 동, 단지명 찾기 (예: 수지구)" value="${esc(K.q)}" style="max-width:240px">
+        <span><b>${list.length.toLocaleString()}</b>곳</span>
+      </div>
+      <div class="btns"><button class="btn btn-primary" type="button" id="kp-xlsx"${list.length ? '' : ' disabled'}>⬇ 엑셀 파일로 저장</button><button class="btn btn-line" type="button" id="kp-imp"${list.length && !K.run ? '' : ' disabled'}>＋ 보이는 곳을 고객사 리스트에 넣기</button></div>
+      <p class="hint" style="margin:6px 0 0">지역·검색으로 좁힌 그대로 저장됩니다. 고객사 리스트에 넣으면 우편(DM) 라벨 인쇄와 전화 영업에 바로 쓸 수 있습니다.</p>
+      <div class="tbl-wrap" style="margin-top:10px;max-height:420px;overflow:auto"><table><thead><tr><th>지역</th><th>단지명</th><th>관리사무소 전화</th><th>팩스</th><th>세대</th></tr></thead><tbody>
+        ${show.length ? show.map((x) => `<tr><td>${esc([x.sigungu, x.dong].filter(Boolean).join(' '))}</td><td><b>${esc(x.name)}</b>${siteByName(x.name) ? ' <span class="status st-sent">등록됨</span>' : ''}</td><td style="white-space:nowrap">${x.tel ? `<a href="tel:${digits(x.tel)}">${esc(tel(x.tel))}</a>` : '<span class="hint">-</span>'}</td><td style="white-space:nowrap">${esc(tel(x.fax)) || '<span class="hint">-</span>'}</td><td>${x.households || ''}</td></tr>`).join('') : '<tr><td colspan="5" class="empty">받은 단지가 없습니다.</td></tr>'}
+      </tbody></table></div>
+      ${list.length > show.length ? `<p class="hint">화면에는 앞의 300곳만 보입니다. 엑셀에는 ${list.length.toLocaleString()}곳이 모두 들어갑니다.</p>` : ''}
+    </div>
+    <p class="hint">⚠ 이 명단은 전화·방문·우편(DM) 영업용입니다. 광고 문자·팩스는 받는 분이 미리 동의한 경우에만 보낼 수 있습니다 (정보통신망법 제50조).</p>`;
+  const $$ = (x) => root.querySelector(x);
+  root.querySelectorAll('[data-ksido]').forEach((c) => { c.onchange = () => { const s = new Set(db.sidos); if (c.checked) s.add(c.dataset.ksido); else s.delete(c.dataset.ksido); db.sidos = KAPT_SIDO.map((x) => x[0]).filter((x) => s.has(x)); kaptSave(); K.msg = ''; drawKapt(); }; });
+  if ($$('#kp-go')) $$('#kp-go').onclick = () => { if (!db.sidos.length) { K.msg = '지역을 하나 이상 골라 주세요.'; kaptPaint(); return; } kaptRun(); };
+  if ($$('#kp-stop')) $$('#kp-stop').onclick = () => { K.stop = true; K.msg = '멈추는 중…'; kaptPaint(); };
+  if ($$('#kp-reset')) $$('#kp-reset').onclick = () => { if (!confirm('지금까지 받은 아파트 명단을 지우고 처음부터 다시 받을까요?')) return; K.db = { sidos: db.sidos, listed: {}, list: {}, info: {} }; kaptSave(); K.msg = ''; drawKapt(); };
+  $$('#kp-sf').onchange = (e) => { K.sidoF = e.target.value; drawKapt(); };
+  $$('#kp-q').onchange = (e) => { K.q = e.target.value; drawKapt(); };
+  $$('#kp-xlsx').onclick = async () => { $$('#kp-xlsx').disabled = true; try { await kaptExcel(list); } catch (e) { K.msg = e.message; kaptPaint(); } $$('#kp-xlsx').disabled = false; };
+  $$('#kp-imp').onclick = () => kaptImport(list);
+}
