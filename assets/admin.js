@@ -489,26 +489,32 @@
   });
   function casePhotoUrl(p) { return sb.storage.from('case-photos').getPublicUrl(p).data.publicUrl; }
   function editCasePhotos(c, keep) {
-    var list = keep || c.photos.slice();
+    var list = keep || (c.photos || []).slice();
     var urlOf = function (p) { return typeof p === 'string' ? casePhotoUrl(p) : p.url; };
-    modal('<h3>사진 순서 · 대표 사진 · 편집</h3><p class="hint" style="margin:0">' + esc(c.title) + '<br>"대표로"를 누르면 맨 앞(대표 사진)으로 갑니다. ◀ ▶로 순서를 바꾸고, ×로 사진을 뺄 수 있습니다.<br><b>사진을 두 번 누르면</b> 돌리기 · 모자이크 편집 창이 열립니다.</p><div class="thumbs" id="ord-thumbs"></div><div class="btns"><button class="btn btn-primary" id="ord-save">저장</button><button class="btn btn-line" data-close>취소</button></div><p class="hint" id="ord-msg" role="status"></p>');
+    modal('<h3>사진 더하기 · 순서 · 대표 사진 · 편집</h3><p class="hint" style="margin:0">' + esc(c.title) + '<br>"대표로"를 누르면 맨 앞(대표 사진)으로 갑니다. ◀ ▶로 순서를 바꾸고, ×로 사진을 뺄 수 있습니다.<br><b>사진을 두 번 누르면</b> 돌리기 · 모자이크 편집 창이 열립니다.</p><div class="thumbs" id="ord-thumbs"></div><label class="btn btn-line btn-sm" style="margin-top:8px;cursor:pointer">+ 사진 더하기<input id="ord-add" type="file" accept="image/*" multiple style="display:none"></label><div class="btns"><button class="btn btn-primary" id="ord-save">저장</button><button class="btn btn-line" data-close>취소</button></div><p class="hint" id="ord-msg" role="status"></p>', { lock: true });
     var reopen = function () { editCasePhotos(c, list); };
+    $('ord-add').onchange = function () {
+      var fs = [].slice.call(this.files || []); this.value = '';
+      var room = 12 - list.length; if (room <= 0) { $('ord-msg').textContent = '사진은 12장까지 넣을 수 있습니다.'; return; }
+      if (fs.length > room) { fs = fs.slice(0, room); $('ord-msg').textContent = '12장까지만 넣었습니다.'; }
+      Promise.all(fs.map(function (f) { return shrinkToBlob(f, 1600); })).then(function (r) { list = list.concat(r.filter(Boolean)); redraw(); });
+    };
     var redraw = function () { drawThumbs('ord-thumbs', list, redraw, urlOf, function (i) { photoEditor(urlOf(list[i]), function (np) { list[i] = np; reopen(); }, reopen); }); };
     redraw();
     $('ord-save').onclick = function () {
       var btn = this; btn.disabled = true; $('ord-msg').textContent = '저장하고 있습니다...';
-      var folder = (c.photos[0] && c.photos[0].indexOf('/') > 0 ? c.photos[0].slice(0, c.photos[0].lastIndexOf('/')) : today().slice(0, 7) + '/' + rid());
+      var cp = c.photos || []; var folder = (cp[0] && cp[0].indexOf('/') > 0 ? cp[0].slice(0, cp[0].lastIndexOf('/')) : today().slice(0, 7) + '/' + rid());
       Promise.all(list.map(function (p, i) {
         if (typeof p === 'string') return p;
         var path = folder + '/e' + Date.now().toString(36) + i + '.jpg';
         return sb.storage.from('case-photos').upload(path, p.blob, { contentType: 'image/jpeg' }).then(function (r) { if (r.error) throw r.error; return path; });
       })).then(function (paths) {
-        var removed = c.photos.filter(function (p) { return paths.indexOf(p) < 0; });
+        var removed = cp.filter(function (p) { return paths.indexOf(p) < 0; });
         return sb.from('cases').update({ photos: paths }).eq('id', c.id).select('id,photos').then(function (r) {
           if (r.error || !r.data || !r.data.length) throw (r.error || new Error('다시 로그인한 뒤 시도해 주세요.'));
           if (removed.length) sb.storage.from('case-photos').remove(removed).then(function () {});
           c.photos = r.data[0].photos.slice(); closeModal(); drawCaseAdmin();
-          modal('<h3>저장했습니다</h3><p>사진 순서 · 대표 사진 · 편집 내용을 저장했습니다. 홈페이지를 <b>Ctrl + F5</b>로 새로고침하면 바뀐 사진이 나옵니다.</p><button class="btn btn-primary" data-close>확인</button>');
+          modal('<h3>저장했습니다</h3><p>사진을 저장했습니다. 홈페이지를 <b>Ctrl + F5</b>로 새로고침하면 바뀐 사진이 나옵니다.</p><button class="btn btn-primary" data-close>확인</button>');
         });
       }).catch(function (err) { btn.disabled = false; $('ord-msg').textContent = '저장하지 못했습니다. ' + (err && err.message || ''); });
     };
@@ -523,7 +529,7 @@
       '<label class="f">작업일<input id="ec-date" type="date" value="' + esc(c.work_date || '') + '"></label></div>' +
       '<label class="f">짧은 설명<textarea id="ec-desc">' + esc(c.description || '') + '</textarea></label>' +
       '<label class="f">결과 한 줄<input id="ec-result" value="' + esc(c.result || '') + '"></label>' +
-      '<div class="btns"><button class="btn btn-primary" id="ec-save">저장</button><button class="btn btn-line" data-close>취소</button></div><p class="hint" id="ec-msg"></p>');
+      '<div class="btns"><button class="btn btn-primary" id="ec-save">저장</button><button class="btn btn-line" data-close>취소</button></div><p class="hint" id="ec-msg"></p>', { lock: true });
     $('ec-save').onclick = function () {
       var patch = { title: $('ec-title').value.trim(), area: $('ec-area').value.trim(), work_type: $('ec-type').value, work_date: $('ec-date').value || null, description: $('ec-desc').value.trim(), result: $('ec-result').value.trim() };
       if (!patch.title) { $('ec-msg').textContent = '제목을 적어 주세요.'; return; }
@@ -540,7 +546,7 @@
     $('case-body').innerHTML = D.cases.length ? D.cases.map(function (c) {
       return '<tr><td>' + dot(c.work_date) + '</td><td><b>' + esc(c.title) + '</b></td><td>' + esc(c.area) + '</td><td>' + esc(c.work_type) + '</td><td>' + (c.photos ? c.photos.length : 0) + '장</td>' +
         '<td style="text-align:center"><input type="checkbox" data-pub="' + c.id + '"' + (c.published ? ' checked' : '') + ' aria-label="홈페이지 공개" style="width:18px;height:18px"></td>' +
-        '<td style="white-space:nowrap"><button class="btn btn-line btn-sm" data-editc="' + c.id + '">글 수정</button> ' + (c.photos && c.photos.length ? '<button class="btn btn-line btn-sm" data-ordc="' + c.id + '">사진 순서 · 대표 · 편집</button> ' : '') + '<button class="btn btn-danger btn-sm" data-delc="' + c.id + '">삭제</button></td></tr>';
+        '<td style="white-space:nowrap"><button class="btn btn-line btn-sm" data-editc="' + c.id + '">글 수정</button> ' + '<button class="btn btn-line btn-sm" data-ordc="' + c.id + '">사진 더하기 · 순서 · 편집</button> ' + '<button class="btn btn-danger btn-sm" data-delc="' + c.id + '">삭제</button></td></tr>';
     }).join('') : '<tr><td colspan="7" class="hint">아직 올린 시공사례가 없습니다.</td></tr>';
     [].forEach.call($('case-body').querySelectorAll('[data-pub]'), function (el) {
       el.onchange = function () { var c = D.cases.filter(function (x) { return x.id === el.dataset.pub; })[0]; sb.from('cases').update({ published: el.checked }).eq('id', c.id).then(function (r) { if (r.error) { el.checked = !el.checked; return fail('공개 설정을 바꾸지 못했습니다.', r.error); } c.published = el.checked; }); };
