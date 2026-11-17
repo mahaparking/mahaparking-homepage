@@ -988,6 +988,9 @@ async function kaptLoad() {
   try { K.db = await kIdbGet(KAPT_KEY); } catch (e) { K.db = null; }
   if (!K.db) { try { K.db = JSON.parse(localStorage.getItem(KAPT_KEY)); if (K.db) K.db.sidos = KAPT_SIDO.map((x) => x[0]); localStorage.removeItem(KAPT_KEY); } catch (e) { K.db = null; } }
   if (!K.db) K.db = { sidos: KAPT_SIDO.map((x) => x[0]), listed: {}, list: {}, info: {} };
+  // 예전에 0곳으로 끝난 시·도는 '받음' 표시를 지워 다시 받게 하기
+  const has = {}; Object.values(K.db.list || {}).forEach((a) => { has[a.sc] = 1; });
+  Object.keys(K.db.listed || {}).forEach((sc) => { if (!has[sc]) delete K.db.listed[sc]; });
   return K.db;
 }
 async function kaptSave() {
@@ -1021,7 +1024,7 @@ async function kaptRun() {
         if (!r.list.length) break;
         page++;
       }
-      if (!K.stop) db.listed[sc] = true;
+      if (!K.stop && got > 0) db.listed[sc] = true;   // 0곳이면 다음에 다시 받아 보기
       kaptSave();
     }
     const todo = Object.values(db.list).filter((a) => db.sidos.includes(a.sc) && !db.info[a.code]).map((a) => a.code);

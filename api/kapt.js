@@ -16,11 +16,11 @@ const BASE = 'https://apis.data.go.kr/1613000';
 // Encoding 키(%2B 등)를 넣어도 되도록 한 번 풀어서 씁니다.
 const KEY = () => { const k = String(process.env.DATA_GO_KR_KEY || '').trim(); try { return /%[0-9A-F]{2}/i.test(k) ? decodeURIComponent(k) : k; } catch (e) { return k; } };
 // 기관이 판 번호를 올리면 이름이 바뀌어서, 새 것부터 차례로 시도합니다.
-const LIST_EP = ['AptListService3/getSidoAptList3', 'AptListService2/getSidoAptList'];
-const INFO_EP = ['AptBasisInfoServiceV4/getAphusBassInfoV4', 'AptBasisInfoServiceV3/getAphusBassInfoV3', 'AptBasisInfoService1/getAphusBassInfo'];
+const LIST_EP = ['AptListService4/getSidoAptList4', 'AptListService3/getSidoAptList3', 'AptListService2/getSidoAptList'];
+const INFO_EP = ['AptBasisInfoServiceV5/getAphusBassInfoV5', 'AptBasisInfoServiceV4/getAphusBassInfoV4', 'AptBasisInfoServiceV3/getAphusBassInfoV3', 'AptBasisInfoService1/getAphusBassInfo'];
 
 async function call(eps, params) {
-  let last = '';
+  let last = '', emptyBody = null;
   for (const ep of eps) {
     const q = new URLSearchParams({ serviceKey: KEY(), _type: 'json', ...params });
     let r;
@@ -43,8 +43,11 @@ async function call(eps, params) {
       if (/30|31|32|33/.test(String(head.resultCode))) throw new Error('공공데이터 인증키가 맞지 않거나, 이 서비스 활용신청이 아직 승인되지 않았습니다.');
       last = head.resultMsg || `오류 ${head.resultCode}`; continue;
     }
-    return (j.response && j.response.body) || j.body || {};
+    const body = (j.response && j.response.body) || j.body || {};
+    if (!items(body).length && ep !== eps[eps.length - 1]) { last = `${ep} 결과 없음`; emptyBody = emptyBody || body; continue; }   // 옛 판 번호가 빈 결과를 줄 때는 다음 것도 시도
+    return body;
   }
+  if (emptyBody) return emptyBody;
   throw new Error(last || '공공데이터를 불러오지 못했습니다.');
 }
 
