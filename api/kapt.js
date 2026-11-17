@@ -67,7 +67,10 @@ module.exports = async (req, res) => {
       const sido = String(b.sido || '').replace(/\D/g, '');
       if (!/^\d{2}$/.test(sido)) return send(res, 400, { error: '시·도 코드가 잘못됐습니다.' });
       const page = Math.max(1, parseInt(b.page, 10) || 1);
-      const body = await call(LIST_EP, { sidoCode: sido, pageNo: String(page), numOfRows: '1000' });
+      let body = await call(LIST_EP, { sidoCode: sido, pageNo: String(page), numOfRows: '1000' });
+      // 강원(51)·전북(52)은 특별자치도가 되며 코드가 바뀌었습니다. 예전 코드로도 한 번 더 찾아봅니다.
+      const OLD = { 51: '42', 52: '45' };
+      if (!items(body).length && OLD[sido]) body = await call(LIST_EP, { sidoCode: OLD[sido], pageNo: String(page), numOfRows: '1000' });
       const list = items(body).map((x) => ({
         code: str(x.kaptCode), name: str(x.kaptName),
         sido: str(x.as1), sigungu: str(x.as2), dong: str(x.as3 || x.as4),
