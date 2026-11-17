@@ -1009,7 +1009,7 @@ function kaptCount() {
 }
 
 async function kaptRun() {
-  const db = await kaptLoad();
+  const db = await kaptLoad(); K.trace = null;
   K.run = true; K.stop = false; K.msg = '단지 목록을 받는 중…'; drawKapt();
   try {
     for (const sc of db.sidos) {
@@ -1019,6 +1019,7 @@ async function kaptRun() {
       while (got < total && !K.stop) {
         const r = await api('/api/kapt', { action: 'list', sido: sc, page });
         r.list.forEach((x) => { db.list[x.code] = Object.assign(x, { sc }); });
+        if (!r.list.length && page === 1 && r.trace) K.trace = r.trace;
         got += r.list.length; total = r.total || got;
         K.msg = `${KAPT_SIDO.find((x) => x[0] === sc)[1]} 단지 목록 ${got.toLocaleString()} / ${total.toLocaleString()}`; kaptPaint();
         if (!r.list.length) break;
@@ -1046,6 +1047,7 @@ async function kaptRun() {
     await Promise.all([worker(), worker(), worker()]);
     kaptSave();
     const ct = kaptCount();
+    if (!ct.all && K.trace) { K.msg = '공공데이터에서 단지 목록이 0곳으로 왔습니다. 아래 응답 내용을 클로드에게 보여 주세요.\n' + K.trace.join('\n'); K.run = false; drawKapt(); return; }
     K.msg = K.stop ? `멈췄습니다. ${ct.done.toLocaleString()} / ${ct.all.toLocaleString()}곳까지 받았습니다.` : ct.left ? `${ct.left.toLocaleString()}곳은 정보를 받지 못했습니다. "이어서 불러오기"를 다시 눌러 보세요.` : `다 받았습니다. 모두 ${ct.all.toLocaleString()}곳입니다.`;
   } catch (e) {
     kaptSave();
@@ -1129,7 +1131,7 @@ async function drawKapt() {
         ${!K.run && started ? '<button class="btn btn-line btn-sm" type="button" id="kp-reset">처음부터 다시</button>' : ''}
       </div>
       <div style="height:10px;background:var(--line);border-radius:6px;overflow:hidden;margin:10px 0 4px"><div id="kp-bar" style="height:100%;width:${pct}%;background:var(--brand);transition:width .3s"></div></div>
-      <p id="kp-msg" role="status" style="margin:0;font-weight:700">${esc(K.msg || (started ? `${ct.done.toLocaleString()} / ${ct.all.toLocaleString()}곳 받음` : '아직 받은 것이 없습니다.'))}</p>
+      <p id="kp-msg" role="status" style="margin:0;font-weight:700;white-space:pre-wrap;word-break:break-all">${esc(K.msg || (started ? `${ct.done.toLocaleString()} / ${ct.all.toLocaleString()}곳 받음` : '아직 받은 것이 없습니다.'))}</p>
       <p class="hint" style="margin:4px 0 0">전국은 약 2만 곳이라 30분 넘게 걸리고, 공공데이터 하루 사용량(서비스당 약 1만 번)을 넘으면 멈춥니다. 그러면 다음 날 <b>이어서 불러오기</b>를 누르세요. 남은 곳부터 받습니다 (전국은 보통 2~3일). 받는 동안 이 화면을 켜 두세요.</p>
     </div>
     <div class="sl-step"><b><span class="sl-no">3</span>엑셀로 저장 · 고객사 리스트에 넣기</b>

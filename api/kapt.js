@@ -19,13 +19,15 @@ const KEY = () => { const k = String(process.env.DATA_GO_KR_KEY || '').trim(); t
 const LIST_EP = ['AptListService4/getSidoAptList4', 'AptListService3/getSidoAptList3', 'AptListService2/getSidoAptList'];
 const INFO_EP = ['AptBasisInfoServiceV5/getAphusBassInfoV5', 'AptBasisInfoServiceV4/getAphusBassInfoV4', 'AptBasisInfoServiceV3/getAphusBassInfoV3', 'AptBasisInfoService1/getAphusBassInfo'];
 
-async function call(eps, params) {
+async function call(eps, params, trace) {
   let last = '', emptyBody = null;
+  const tr = (m) => { if (trace) trace.push(m); };
   for (const ep of eps) {
     const q = new URLSearchParams({ serviceKey: KEY(), _type: 'json', ...params });
     let r;
     try { r = await fetch(`${BASE}/${ep}?${q}`, { headers: { Accept: 'application/json' } }); } catch (e) { last = '공공데이터 서버에 연결하지 못했습니다.'; continue; }
     const t = await r.text();
+    tr(`${ep.split('/')[0]} → HTTP ${r.status} ${t.replace(/\s+/g, ' ').slice(0, 160)}`);
     if (r.status === 404) { last = `${ep} 없음`; continue; }
     let j = null;
     try { j = JSON.parse(t); } catch (e) { /* XML 오류 응답 */ }
@@ -70,15 +72,16 @@ module.exports = async (req, res) => {
       const sido = String(b.sido || '').replace(/\D/g, '');
       if (!/^\d{2}$/.test(sido)) return send(res, 400, { error: '시·도 코드가 잘못됐습니다.' });
       const page = Math.max(1, parseInt(b.page, 10) || 1);
-      let body = await call(LIST_EP, { sidoCode: sido, pageNo: String(page), numOfRows: '1000' });
+      const trace = [];
+      let body = await call(LIST_EP, { sidoCode: sido, pageNo: String(page), numOfRows: '1000' }, trace);
       // 강원(51)·전북(52)은 특별자치도가 되며 코드가 바뀌었습니다. 예전 코드로도 한 번 더 찾아봅니다.
       const OLD = { 51: '42', 52: '45' };
-      if (!items(body).length && OLD[sido]) body = await call(LIST_EP, { sidoCode: OLD[sido], pageNo: String(page), numOfRows: '1000' });
+      if (!items(body).length && OLD[sido]) body = await call(LIST_EP, { sidoCode: OLD[sido], pageNo: String(page), numOfRows: '1000' }, trace);
       const list = items(body).map((x) => ({
         code: str(x.kaptCode), name: str(x.kaptName),
         sido: str(x.as1), sigungu: str(x.as2), dong: str(x.as3 || x.as4),
       })).filter((x) => x.code);
-      return send(res, 200, { list, total: parseInt(body.totalCount, 10) || list.length, page });
+      return send(res, 200, Object.assign({ list, total: parseInt(body.totalCount, 10) || list.length, page }, list.length ? {} : { trace }));
     }
 
     if (b.action === 'info') {
