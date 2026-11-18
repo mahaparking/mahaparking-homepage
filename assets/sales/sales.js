@@ -9,7 +9,7 @@ const root = document.getElementById('sales-root');
 const D = { sites: [], managers: [], jobs: [], promos: [], sends: [], mails: [], settings: {}, loaded: false };
 const V = { ms: 'all', send2: { kind: 'all', st: 'all', q: '', worked: false }, mail: { ids: new Set(), kind: 'all', st: 'all', q: '', title: '', date: '' }, sub: 'managers', mq: '', mf: 'all', mk: 'all', sq: '', sf: 'all', sk: 'all', send: { promo: '', ids: new Set(), text: '', opened: new Set() } };
 
-const SUBS = [['managers', '담당자'], ['sites', '단지·건물'], ['promos', '홍보물'], ['send', '문자 보내기'], ['mail', '📮 우편'], ['kapt', '🏢 아파트 명단'], ['history', '보낸 기록'], ['settings', '설정']];
+const SUBS = [['managers', '담당자'], ['sites', '단지·건물'], ['promos', '홍보물'], ['send', '문자 보내기'], ['mail', '📮 우편'], ['find', '🔎 건물 찾기'], ['kapt', '🏢 아파트 명단'], ['history', '보낸 기록'], ['settings', '설정']];
 const SITE_KINDS = ['아파트', '건물·빌라', '기타'];
 /** 예전 값(빌라·오피스텔 등)도 세 가지로 묶어 보기 */
 const kindOf = (k) => (k === '아파트' ? '아파트' : /빌라|오피스텔|상가|건물/.test(k || '') ? '건물·빌라' : '기타');
@@ -144,7 +144,7 @@ function mount() {
   const nb = root.querySelector('#sl-need'); nb.textContent = need || ''; nb.classList.toggle('hidden', !need);
   if (V.sub === 'managers') { if (!V.webSeen) V.webSeen = seenAt(); markWebSeen(); }
   refreshBadge();
-  ({ managers: drawManagers, sites: drawSites, promos: drawPromos, send: drawSend, mail: drawMail, kapt: drawKapt, history: drawHistory, settings: drawSettings })[V.sub]();
+  ({ managers: drawManagers, sites: drawSites, promos: drawPromos, send: drawSend, mail: drawMail, find: drawFind, kapt: drawKapt, history: drawHistory, settings: drawSettings })[V.sub]();
 }
 const body = () => root.querySelector('#sl-body');
 
@@ -1138,6 +1138,90 @@ async function kaptImport(list) {
     K.msg = `${done.toLocaleString()}곳을 고객사 리스트에 넣었습니다. (단지·건물 → 상태 "영업 대상")`;
   } catch (e) { K.msg = `${done.toLocaleString()}곳까지 넣고 멈췄습니다: ${e.message}`; }
   drawKapt();
+}
+
+/* ---------- 🔎 건물 하나씩 찾기 (아파트·빌라·상가·오피스텔·학교·주차장 등) ----------
+ * 카카오 장소 검색(api/place.js) + 아파트면 공공데이터(K-apt) 관리사무소 정보 한 곳만 받아 오기 */
+const FD = { q: '', list: [], page: 1, end: true, msg: '', busy: false, kapt: {} };
+const placeKind = (cat, name) => {
+  const t = `${cat} ${name}`;
+  if (/아파트/.test(t)) return '아파트';
+  if (/오피스텔/.test(t)) return '오피스텔';
+  if (/빌라|연립|다세대|주택/.test(t)) return '빌라';
+  if (/주차장/.test(t)) return '공영주차장';
+  if (/상가|빌딩|타워|센터|건물|오피스|병원|마트|백화점|호텔/.test(t)) return '상가';
+  return '기타';
+};
+const placeRegion = (addr) => String(addr || '').split(' ').slice(0, 2).join(' ').replace(/특별자치시|특별자치도|특별시|광역시/g, '').replace(/^(경기|충청북|충청남|전라북|전라남|경상북|경상남|강원)도 /, '$1 ').trim();
+async function findSearch(more) {
+  const qq = FD.q.trim(); if (qq.length < 2) { FD.msg = '찾을 이름을 두 글자 이상 적어 주세요. 예) 안양 OO빌딩, 평촌 OO아파트'; drawFind(); return; }
+  FD.busy = true; FD.msg = '찾는 중…'; if (!more) { FD.list = []; FD.page = 1; } drawFind();
+  try {
+    const r = await api('/api/place', { q: qq, page: FD.page });
+    FD.list = FD.list.concat(r.list); FD.end = r.end; FD.page = r.page + 1;
+    FD.msg = FD.list.length ? `${FD.list.length}곳 찾았습니다${r.end ? '' : ' (더 있음)'}.` : '찾은 곳이 없습니다. 지역 이름을 함께 적어 보세요. 예) 수원 OO빌딩';
+  } catch (e) { FD.msg = e.message; }
+  FD.busy = false; drawFind();
+}
+/* 아파트면 공공데이터에서 관리사무소 전화·팩스·세대수 받아 오기 (그 시·도 단지 목록에서 이름으로 찾음) */
+async function findKapt(p) {
+  const db = await kaptLoad();
+  const FULL = { 충북: '충청북', 충남: '충청남', 전북: '전라북', 전남: '전라남', 경북: '경상북', 경남: '경상남' };
+  const sido = KAPT_SIDO.find(([, n]) => p.jibun.startsWith(n) || p.address.startsWith(n) || (FULL[n] && (p.address.startsWith(FULL[n]) || p.jibun.startsWith(FULL[n]))));
+  const key = p.id; FD.kapt[key] = { busy: true }; drawFind();
+  try {
+    if (!sido) throw new Error('주소에서 시·도를 알아보지 못했습니다.');
+    const sc = sido[0];
+    if (!Object.values(db.list).some((a) => a.sc === sc)) {   // 그 시·도 단지 목록을 아직 안 받았으면 목록만 받기
+      let page = 1, got = 0, total = 1;
+      while (got < total) { const r = await api('/api/kapt', { action: 'list', sido: sc, page }); r.list.forEach((x) => { db.list[x.code] = Object.assign(x, { sc }); }); got += r.list.length; total = r.total || got; if (!r.list.length) break; page++; }
+      if (got) db.listed[sc] = true; kaptSave();
+    }
+    const nm = (s) => String(s || '').replace(/\s|아파트|\(.*?\)/g, '');
+    const cands = Object.values(db.list).filter((a) => a.sc === sc && (nm(a.name) === nm(p.name) || nm(p.name).includes(nm(a.name)) || nm(a.name).includes(nm(p.name))));
+    const pick = cands.find((a) => p.address.includes(a.sigungu || '@@')) || cands[0];
+    if (!pick) throw new Error('공공데이터(K-apt)에 등록된 아파트를 찾지 못했습니다.');
+    if (!db.info[pick.code]) { const r = await api('/api/kapt', { action: 'info', codes: [pick.code] }); r.info.forEach((x) => { if (x.ok) db.info[x.code] = x; else throw new Error(x.error || '정보를 받지 못했습니다.'); }); kaptSave(); }
+    FD.kapt[key] = { info: Object.assign({}, pick, db.info[pick.code] || {}) };
+  } catch (e) { FD.kapt[key] = { error: e.message }; }
+  drawFind();
+}
+async function findAdd(p) {
+  const k = FD.kapt[p.id] && FD.kapt[p.id].info;
+  const row = { name: (k && k.name) || p.name, kind: placeKind(p.category, p.name), region: placeRegion(p.address) || null, address: (k && (k.doro || k.addr)) || p.address || null,
+    office_tel: digits((k && k.tel) || p.phone) || null, office_fax: digits(k && k.fax) || null, households: (k && k.households) || null, status: 'lead',
+    memo: [p.category && `분류: ${p.category}`, k && k.code && `공공데이터 단지코드 ${k.code}`, p.url && `카카오맵 ${p.url}`].filter(Boolean).join(' · '), updated_at: nowIso() };
+  try { const got = await q(sb.from('sites').insert(row).select(), '고객사 리스트에 넣지 못했습니다.'); D.sites.push(...got); D.sites.sort((a, b) => a.name.localeCompare(b.name, 'ko')); FD.msg = `"${row.name}"을(를) 고객사 리스트(단지·건물)에 넣었습니다.`; }
+  catch (e) { FD.msg = e.message; }
+  drawFind();
+}
+function drawFind() {
+  body().innerHTML = `
+    <p class="hint">아파트뿐 아니라 <b>빌라·상가·오피스텔·병원·학교·공영주차장 등 모든 건물</b>을 이름으로 하나씩 찾습니다. 아파트는 공공데이터에서 <b>관리사무소 전화·팩스·세대수</b>도 받아 올 수 있습니다.</p>
+    <form class="add-row" id="fd-form" style="margin:6px 0;align-items:center">
+      <input id="fd-q" placeholder="예) 안양 OO빌딩 · 평촌 OO아파트 · 수원시청 주차장" value="${esc(FD.q)}" style="flex:1;min-width:220px" autocomplete="off">
+      <button class="btn btn-primary" type="submit"${FD.busy ? ' disabled' : ''}>🔎 찾기</button>
+    </form>
+    <p id="fd-msg" role="status" style="margin:6px 0;font-weight:700">${esc(FD.msg)}</p>
+    ${FD.list.length ? `<div class="fd-list">${FD.list.map((p) => {
+      const k = FD.kapt[p.id] || {}, kin = k.info, apt = placeKind(p.category, p.name) === '아파트', reg = siteByName((kin && kin.name) || p.name);
+      return `<div class="fd-item">
+        <div class="fd-h"><b>${esc(p.name)}</b> <span class="hint">${esc(p.category.split(' > ').slice(-2).join(' · '))}</span>${reg ? ' <span class="status st-sent">등록됨</span>' : ''}</div>
+        <div class="hint">${esc(p.address)}${p.jibun && p.jibun !== p.address ? ` (${esc(p.jibun)})` : ''}</div>
+        <div>${p.phone ? `☎ <a href="tel:${digits(p.phone)}">${esc(p.phone)}</a>` : '<span class="hint">전화번호 없음</span>'}${p.url ? ` · <a href="${esc(p.url)}" target="_blank" rel="noopener">지도 보기</a>` : ''}</div>
+        ${kin ? `<div class="fd-kapt">🏢 관리사무소 ☎ ${kin.tel ? `<a href="tel:${digits(kin.tel)}"><b>${esc(tel(kin.tel))}</b></a>` : '-'} · 팩스 ${esc(tel(kin.fax)) || '-'} · ${kin.households ? kin.households + '세대' : ''}${kin.mgr ? ' · ' + esc(kin.mgr) : ''}</div>` : ''}
+        ${k.error ? `<div class="hint" style="color:var(--stop)">${esc(k.error)}</div>` : ''}
+        <div class="btns" style="margin-top:6px">
+          ${apt && !kin ? `<button class="btn btn-line btn-sm" type="button" data-fkapt="${esc(p.id)}"${k.busy ? ' disabled' : ''}>${k.busy ? '받는 중…' : '🏢 관리사무소 정보 받기'}</button>` : ''}
+          <button class="btn btn-primary btn-sm" type="button" data-fadd="${esc(p.id)}"${reg ? ' disabled' : ''}>＋ 고객사 리스트에 넣기</button>
+        </div></div>`;
+    }).join('')}</div>${FD.end ? '' : `<div class="btns"><button class="btn btn-line" type="button" id="fd-more"${FD.busy ? ' disabled' : ''}>더 보기</button></div>`}` : ''}
+    <p class="hint" style="margin-top:12px">⚠ 찾은 전화번호는 전화·방문·우편 영업용입니다. 광고 문자·팩스는 받는 분이 미리 동의한 경우에만 보낼 수 있습니다.</p>`;
+  const f = root.querySelector('#fd-form');
+  f.onsubmit = (e) => { e.preventDefault(); FD.q = root.querySelector('#fd-q').value; findSearch(false); };
+  const more = root.querySelector('#fd-more'); if (more) more.onclick = () => findSearch(true);
+  root.querySelectorAll('[data-fkapt]').forEach((b) => { b.onclick = () => findKapt(FD.list.find((p) => p.id === b.dataset.fkapt)); });
+  root.querySelectorAll('[data-fadd]').forEach((b) => { b.onclick = () => { b.disabled = true; findAdd(FD.list.find((p) => p.id === b.dataset.fadd)); }; });
 }
 
 async function drawKapt() {
