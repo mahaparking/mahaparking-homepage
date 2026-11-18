@@ -142,11 +142,13 @@
     Promise.all(fs.map(function (f) { return shrinkToBlob(f, 1600); })).then(function (r) { cPhotos = cPhotos.concat(r.filter(Boolean)); drawC(); });
   });
   function drawC() { drawThumbs('c-thumbs', cPhotos, drawC); }
+  ['c-agree', 'r-agree'].forEach(function (id) { var el = $(id); if (el) el.addEventListener('change', function () { if (el.checked) el.closest('.consent').classList.remove('need'); }); });
   $('consult-form').addEventListener('submit', function (e) {
     e.preventDefault();
     var form = this, done = $('c-done'), btn = form.querySelector('button[type=submit]');
     var v = function (id) { return $(id).value.trim(); };
     if (!v('c-phone') && !v('c-email')) { done.className = 'notice'; done.textContent = '연락처나 이메일 중 하나는 적어 주세요. 답변을 드릴 곳이 필요합니다.'; return; }
+    if (!$('c-agree').checked) { done.className = 'notice'; done.textContent = '개인정보 수집·이용에 동의해 주셔야 접수할 수 있습니다.'; $('c-agree').closest('.consent').classList.add('need'); $('c-agree').focus(); return; }
     var sy = [].map.call(document.querySelectorAll('#c-symptom input:checked'), function (i) { return i.value; });
     btn.disabled = true; btn.textContent = '접수하고 있습니다...';
     var month = today().slice(0, 7);
@@ -217,6 +219,7 @@
     var form = this, btn = form.querySelector('button[type=submit]');
     var v = function (id) { return $(id).value.trim(); };
     if (!v('r-email') && !v('r-phone')) { $('r-err').textContent = '견적서를 보내 드릴 이메일이나 연락처를 적어 주세요.'; return; }
+    if (!$('r-agree').checked) { $('r-err').textContent = '개인정보 수집·이용에 동의해 주셔야 견적 요청을 보낼 수 있습니다.'; $('r-agree').closest('.consent').classList.add('need'); $('r-agree').focus(); return; }
     $('r-err').textContent = ''; btn.disabled = true; btn.textContent = '보내고 있습니다...';
     var items = cart.map(function (c) { var p = prod(c.product_id); return { product_id: c.product_id, name: p ? p.name : '', unit: p ? p.unit : '', qty: c.qty, length: c.length }; });
     sb.from('requests').insert({ kind: '제품 견적', name: v('r-name'), phone: v('r-phone'), email: v('r-email'), area: v('r-area'), memo: v('r-memo'), items: items })

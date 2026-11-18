@@ -21,6 +21,15 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Gothic+A1:wght@500;700;800;900&family=Noto+Sans+KR:wght@400;500;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/assets/site.css">
+<style>
+  .consent{border:1px solid var(--line);border-radius:12px;padding:12px 14px;background:var(--tone-a);font-size:13.5px;line-height:1.6}
+  .consent-chk{display:flex;gap:8px;align-items:center;cursor:pointer;font-size:15px}
+  .consent-chk input{width:20px;height:20px;flex:none;margin:0}
+  .consent ul{margin:8px 0 6px;padding-left:18px;color:var(--muted)}
+  .consent p{margin:0;color:var(--muted)}
+  .consent a{color:var(--brand);font-weight:700}
+  .consent.need{border-color:var(--stop);background:#FFF4F2}
+</style>
 </head>
 <body>
 
@@ -439,6 +448,15 @@
         <label class="f" for="c-memo">자세한 내용<textarea id="c-memo" placeholder="언제부터, 어떤 상황에서 문제가 생기는지 적어 주세요."></textarea></label>
         <label class="f" for="c-photo">사진 첨부 <span class="hint">(최대 6장)</span><input id="c-photo" type="file" accept="image/*" multiple></label>
         <div class="thumbs" id="c-thumbs"></div>
+<div class="consent">
+          <label class="consent-chk" for="c-agree"><input type="checkbox" id="c-agree"> <span><b>[필수] 개인정보 수집·이용에 동의합니다.</b></span></label>
+          <ul>
+            <li><b>수집 항목:</b> 이름(현장명·담당자), 연락처·이메일, 지역, 상담 내용, 사진(첨부 시)</li>
+            <li><b>이용 목적:</b> 상담·견적 회신, 현장 확인·방문</li>
+            <li><b>보관 기간:</b> 상담 종료 후 3년 (거래 시 관계 법령에 따른 기간)</li>
+          </ul>
+          <p>동의하지 않으실 수 있으나, 이 경우 홈페이지 접수가 어렵습니다. 전화(010-8275-1036)로 상담하실 수 있습니다. <a href="/privacy.html" target="_blank" rel="noopener">개인정보처리방침 전문 보기</a></p>
+        </div>
         <button class="btn btn-primary" type="submit">상담 신청하기</button>
         <div id="c-done" class="notice ok hidden" aria-live="polite"></div>
       </form>
@@ -462,6 +480,15 @@
           <label class="f" for="r-email">이메일 <span class="hint">(견적서 받으실 주소)</span><input id="r-email" type="email" placeholder="example@naver.com"></label>
           <label class="f" for="r-area">설치 지역<input id="r-area" placeholder="예) 서울 송파구"></label>
           <label class="f" for="r-memo">요청 사항<textarea id="r-memo" style="min-height:70px" placeholder="현장 상황, 희망 일정 등"></textarea></label>
+  <div class="consent">
+            <label class="consent-chk" for="r-agree"><input type="checkbox" id="r-agree"> <span><b>[필수] 개인정보 수집·이용에 동의합니다.</b></span></label>
+            <ul>
+              <li><b>수집 항목:</b> 이름(현장명·담당자), 연락처·이메일, 지역, 상담 내용, 사진(첨부 시)</li>
+              <li><b>이용 목적:</b> 상담·견적 회신, 현장 확인·방문</li>
+              <li><b>보관 기간:</b> 상담 종료 후 3년 (거래 시 관계 법령에 따른 기간)</li>
+            </ul>
+            <p>동의하지 않으실 수 있으나, 이 경우 홈페이지 접수가 어렵습니다. 전화(010-8275-1036)로 상담하실 수 있습니다. <a href="/privacy.html" target="_blank" rel="noopener">개인정보처리방침 전문 보기</a></p>
+          </div>
           <button class="btn btn-primary" type="submit">견적 요청 보내기</button>
           <p class="hint" id="r-err" role="alert"></p>
         </form>
@@ -489,6 +516,7 @@
     <div class="biz"><span>대표 조상현</span><span>사업자등록번호 273-11-02830</span></div>
     <div class="biz"><span>경기도 안양시 만안구 만안로 31-3, 9층 911호 (안양동, 안양인터비즈)</span></div>
     <div class="biz"><span>대표번호 070-4866-1036</span><span>휴대폰 010-8275-1036</span><span>이메일 ace@mahaparking.co.kr</span><a href="https://blog.naver.com/mahaparking">네이버 블로그</a></div>
+    <div class="biz"><a href="/privacy.html" style="color:#fff;font-weight:700">개인정보처리방침</a></div>
     <div class="foot-end"><span>© 2026 마하파킹</span><a class="admin-link" href="/admin/" rel="nofollow">ADMIN</a></div>
   </div>
 </footer>
