@@ -296,6 +296,12 @@
           </div>
         </div>
         <div class="adm-grp">
+          <div class="adm-grp-h" role="button" tabindex="0" aria-expanded="false"><span>🏢 건물 목록 수집</span><i aria-hidden="true">▾</i></div>
+          <div class="adm-grp-items">
+            <button role="tab" data-tab="collect">건물 찾기 · 아파트 명단</button>
+          </div>
+        </div>
+        <div class="adm-grp">
           <div class="adm-grp-h" role="button" tabindex="0" aria-expanded="false"><span>🌐 홈페이지 관리</span><i aria-hidden="true">▾</i></div>
           <div class="adm-grp-items">
             <button role="tab" data-tab="stats">방문 통계</button>
@@ -304,6 +310,12 @@
       </nav>
     </aside>
     <div class="adm-main">
+
+    <!-- 건물 목록 수집 (assets/collect/collect.js) -->
+    <div class="card panel hidden" data-panel="collect">
+      <h2>건물 목록 수집</h2>
+      <div id="collect-root"></div>
+    </div>
 
     <!-- 작업 · 수금 (assets/works/works.js) -->
     <div class="card panel hidden" data-panel="works">
@@ -469,5 +481,6 @@
 <script type="module" src="/assets/shot/hyunjangshot.js"></script>
 <script type="module" src="/assets/sales/sales.js"></script>
 <script type="module" src="/assets/works/works.js"></script>
+<script type="module" src="/assets/collect/collect.js"></script>
 </body>
 </html>
