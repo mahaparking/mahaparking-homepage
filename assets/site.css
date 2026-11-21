@@ -389,3 +389,40 @@ section{scroll-margin-top:96px}
 .foot-end{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}
 .admin-link{font-size:12px;letter-spacing:.08em;color:#B7C6D3;border:1px solid rgba(183,198,211,.35);border-radius:6px;padding:4px 10px;text-decoration:none;opacity:.7}
 .admin-link:hover{opacity:1;color:#fff;border-color:#fff}
+
+/* 첫 화면 전화 버튼 (PC: 한 줄 / 휴대폰: 두 줄 카드) */
+.hero-call small{font-size:inherit;font-weight:700}
+.m-br{display:none}
+
+/* 휴대폰 첫 화면 정리 (2026-11-21) */
+@media (max-width:520px){
+  /* 상단: 로고를 줄이고 메뉴는 한 줄 칩으로 */
+  .nav{padding-top:8px;padding-bottom:8px;gap:6px}
+  .logo-img{height:42px;margin-left:-4px}
+  .menu{display:grid;grid-template-columns:auto auto auto auto auto;justify-content:space-between;gap:4px;width:100%}
+  .menu button{white-space:nowrap;font-size:13.5px;padding:6px 9px;border-radius:999px;border:1px solid rgba(255,255,255,.14);letter-spacing:-.02em}
+  .menu button[aria-current="page"]{background:var(--signal);border-color:var(--signal);color:#1a1a1a;font-weight:700}
+
+  /* 본문 */
+  .hero{padding:26px 0 30px}
+  .hero-grid{gap:24px}
+  .eyebrow{font-size:12.5px;padding:5px 11px}
+  .hero h1{font-size:31px;margin:14px 0 12px;letter-spacing:-.03em}
+  .hero p.lead{font-size:15.5px;line-height:1.65;margin-bottom:20px}
+  .m-br{display:inline}
+
+  /* 버튼: 전화 두 개는 나란히, 견적은 아래 한 줄 */
+  .hero-btns{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  .hero-call{flex-direction:column;align-items:flex-start;gap:2px;padding:12px 14px;text-align:left}
+  .hero-call small{font-size:12.5px;font-weight:500;opacity:.85}
+  .hero-call span{font-size:16px;letter-spacing:-.01em}
+  .hero-quote{grid-column:1/-1;width:100%;padding:13px}
+
+  /* 신뢰 문구: 체크 표시 카드 한 장 */
+  .trust{display:grid;gap:6px;margin-top:18px;padding:14px 16px;border-radius:14px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);font-size:13.5px}
+  .trust span{display:flex;gap:8px;align-items:baseline}
+  .trust span::before{content:"✓";color:var(--signal);font-weight:900}
+
+  .hero-art{padding:6px;border-radius:16px}
+  .art-cap{font-size:13px;margin-top:10px}
+}
