@@ -5,7 +5,7 @@
  *  건축물대장에는 전화번호가 없습니다 → 방문 · 우편(DM)용. 전화는 직접 넣거나 🔎 하나씩 찾기로.
  *  이 PC(IndexedDB)는 빨리 열기 위한 복사본이고, 진짜 명단은 서버 표 house_bld 에 있습니다.
  */
-import { mselHtml, mselBind } from './msel.js';
+import { mselHtml, mselBind, regionOpts } from './msel.js';
 export function makeHouse(ctx) {
   const { sb, body, D, digits, tel, nowIso, loadXlsxLib, isOpen, api } = ctx;
   const P = { db: null, loading: null, msg: '', q: '', qf: 'all', sidos: [], sggs: [], kinds: [], min: 0, max: 0, pmin: 0, mech: false, hasTel: false, noTel: false, notReg: false, limit: 100, busy: false, stop: false, pickSido: [], pickSgg: [] };
@@ -352,8 +352,7 @@ export function makeHouse(ctx) {
     const pSidos = [...new Set(SG.map(([, v]) => SIDO_SHORT(v[0].split(' ')[0])))];
     const pSggs = !P.pickSido.length ? [] : SG.filter(([, v]) => P.pickSido.includes(SIDO_SHORT(v[0].split(' ')[0]))).map(([c, v]) => [c, (P.pickSido.length > 1 ? v[0] : v[0].split(' ').slice(1).join(' ')) + (() => { const d = v[1].filter(([b]) => db.done[c + b]).length; return d ? (d === v[1].length ? ' ✓' : ` (${d}/${v[1].length})`) : ''; })()]);
     const got = SG.map(([c, v]) => [c, v, v[1].filter(([b]) => db.done[c + b]).length]).filter((x) => x[2]);
-    const sidos = [...new Set(every.map((x) => x.sido))].sort((a, b) => KO.compare(a, b));
-    const sggs = !P.sidos.length ? [] : [...new Set(every.filter((x) => x.sgg && P.sidos.includes(x.sido)).map((x) => x.sido + '|' + x.sgg))].sort((a, b) => KO.compare(a, b)).map((k) => { const [d, g] = k.split('|'); return [k, P.sidos.length > 1 ? `${d} ${g}` : g]; });
+    const { sidos, sggs } = regionOpts(every, P.sidos, KO);
     const hidden = Object.values(db.list).filter((a) => a.hidden).length;
     body().innerHTML = `
       <p id="hs-sync" class="hint" style="margin:0 0 8px;font-weight:700">${esc(S.note)}</p>
@@ -375,7 +374,7 @@ export function makeHouse(ctx) {
       <p id="hs-msg" role="status" style="margin:8px 0;font-weight:700;white-space:pre-wrap;${P.msg ? '' : 'display:none'}">${esc(P.msg)}</p>
       ${started ? `
       <div class="kp-filter">
-        ${mselHtml({ id: 'hs-sido', all: '전국', options: sidos.map((d) => [d, d]), selected: P.sidos })}
+        ${mselHtml({ id: 'hs-sido', all: '전국', options: sidos, selected: P.sidos })}
         ${mselHtml({ id: 'hs-sgg', all: '시·군·구 전체', placeholder: '시·군·구 (시·도를 먼저)', options: sggs, selected: P.sggs })}
         <div class="kp-search"><select id="hs-qf" aria-label="찾을 곳">${QF.map(([v, n]) => `<option value="${v}"${P.qf === v ? ' selected' : ''}>${n}</option>`).join('')}</select><input id="hs-q" type="search" placeholder="${{ all: '검색어', name: '예) OO빌라', addr: '예) 평촌동, 관악대로', tel: '예) 010-1234', memo: '메모 내용' }[P.qf]}" value="${esc(P.q)}"></div>
       </div>
@@ -394,7 +393,7 @@ export function makeHouse(ctx) {
       <div class="kp-bar"><span class="kp-count"><b>${list.length.toLocaleString()}</b>곳</span>
         <div class="btns"><button class="btn btn-primary btn-sm" type="button" id="hs-xlsx"${list.length ? '' : ' disabled'}>⬇ 엑셀 저장</button><button class="btn btn-line btn-sm" type="button" id="hs-imp"${list.length ? '' : ' disabled'}>＋ 고객사 리스트에 넣기</button><button class="btn btn-line btn-sm" type="button" id="hs-add">＋ 건물 직접 추가</button>${P.busy && !P.fetching ? '<button class="btn btn-line btn-sm" type="button" id="hs-kstop">■ 멈추기</button>' : `<button class="btn btn-line btn-sm" type="button" id="hs-kakao" title="이름·주소가 맞는 곳만 넣습니다"${kTodo && !P.busy ? '' : ' disabled'}>📞 카카오맵에서 전화 찾기${kTodo ? ` (${kTodo.toLocaleString()}곳)` : ''}</button>`}</div></div>
       <div class="tbl-wrap kp-tbl"><table><thead><tr><th>지역</th><th>건물명 · 주소 <span class="hint" style="font-weight:400">(누르면 고치기 · 삭제)</span></th><th>구분</th><th>세대</th><th>주차</th><th>층</th><th>사용승인</th></tr></thead><tbody>
-        ${show.length ? show.map((x) => `<tr data-hs="${esc(x.code)}"><td>${esc([x.sgg, x.dongName].filter(Boolean).join(' '))}</td><td><b>${esc(x.name || '(이름 없음)')}</b>${reg.has(nmKey(x.name)) && x.name ? ' <span class="status st-sent">등록됨</span>' : ''}${x.manual ? ' <span class="hint">(직접 추가)</span>' : ''}${x.tel ? ` <a href="tel:${digits(x.tel)}">☎ ${esc(tel(x.tel))}</a>${x.telK ? ` <span class="hint">(${x.telK})</span>` : ''}` : ''}${x.memo ? `<br><span class="hint" style="color:var(--brand)">📝 ${esc(x.memo)}</span>` : ''}${x.doro || x.jibun ? `<br><span class="hint">${esc(x.doro || x.jibun)}</span>` : ''}</td><td style="white-space:nowrap"><span class="hk hk-${{ 아파트: 'a', 빌라: 'v', 도시형생활주택: 'd' }[GROUP[x.kind]] || 'e'}">${esc(GROUP[x.kind] === '도시형생활주택' ? '도시형' : (GROUP[x.kind] || '기타'))}</span>${(GROUP[x.kind] === '빌라' && x.kind !== '빌라') || x.est ? `<br><span class="hint"${x.est ? ' title="건축물대장에 \'공동주택\'으로만 적혀 있어 이름·층수로 추정"' : ''}>${[GROUP[x.kind] === '빌라' && x.kind !== '빌라' ? x.kind : '', x.est ? '추정' : ''].filter(Boolean).join(' · ')}</span>` : ''}${x.dongs > 1 ? `<br><span class="hint">${x.dongs}개 동</span>` : ''}</td><td>${x.hh || ''}</td><td style="white-space:nowrap">${x.park || ''}${x.mech ? `<br><span class="hint">기계식 ${x.mech}</span>` : ''}</td><td>${x.flr || ''}</td><td style="white-space:nowrap">${esc((x.use || '').slice(0, 7))}</td></tr>`).join('') : '<tr><td colspan="7" class="hint">조건에 맞는 건물이 없습니다.</td></tr>'}
+        ${show.length ? show.map((x) => `<tr data-hs="${esc(x.code)}"><td>${esc([x.sgg, x.dongName].filter(Boolean).join(' '))}</td><td><b>${esc(x.name || '(이름 없음)')}</b>${reg.has(nmKey(x.name)) && x.name ? ' <span class="status st-sent">등록됨</span>' : ''}${x.manual ? ' <span class="hint">(직접 추가)</span>' : ''}${x.tel ? ` <a href="tel:${digits(x.tel)}">☎ ${esc(tel(x.tel))}</a>${x.telK ? ` <span class="hint">(${x.telK})</span>` : ''}` : ''}${x.memo ? `<br><span class="hint" style="color:var(--brand)">📝 ${esc(x.memo)}</span>` : ''}${x.doro || x.jibun ? `<br><span class="hint">${esc(x.doro || x.jibun)}</span>` : ''}</td><td style="white-space:nowrap"><span class="hk hk-${{ 아파트: 'a', 빌라: 'v', 도시형생활주택: 'd' }[GROUP[x.kind]] || 'e'}">${esc(GROUP[x.kind] === '도시형생활주택' ? '도시형' : (GROUP[x.kind] || '기타'))}</span>${(GROUP[x.kind] === '빌라' && x.kind !== '빌라') || x.est ? `<br><span class="hint"${x.est ? ' title="건축물대장에 \'공동주택\'으로만 적혀 있어 이름·층수로 추정"' : ''}>${[GROUP[x.kind] === '빌라' && x.kind !== '빌라' ? x.kind : '', x.est ? '추정' : ''].filter(Boolean).join(' · ')}</span>` : ''}${x.dongs > 1 ? `<br><span class="hint">${x.dongs}개 동</span>` : ''}</td><td>${x.hh || ''}</td><td style="white-space:nowrap">${x.park || ''}${x.mech ? `<br><span class="hint">기계식 ${x.mech}</span>` : ''}</td><td>${x.flr || ''}</td><td style="white-space:nowrap">${esc((x.use || '').slice(0, 7))}</td></tr>`).join('') : `<tr><td colspan="7" class="hint">${P.sidos.length && !every.some((x) => P.sidos.includes(x.sido)) ? '고른 지역은 아직 받지 않았습니다. 위 "📥 받아 올 지역 고르기"에서 먼저 받아 주세요.' : '조건에 맞는 건물이 없습니다.'}</td></tr>`}
       </tbody></table></div>
       ${list.length > show.length ? `<div class="btns" style="justify-content:center;margin-top:8px"><button class="btn btn-line btn-sm" type="button" id="hs-more">더 보기 (${show.length.toLocaleString()} / ${list.length.toLocaleString()})</button></div>` : ''}
       <details class="kp-more"><summary>⚙ 명단 관리</summary>

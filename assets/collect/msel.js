@@ -37,3 +37,14 @@ export function mselBind(root, id, onChange) {
 document.addEventListener('mousedown', (e) => {
   document.querySelectorAll('details.msel[open]').forEach((d) => { if (!d.contains(e.target)) d.open = false; });
 });
+
+/* 지역 고르기 목록: 17개 시·도를 늘 모두 보이고(받은 곳 수 표시), 시·군·구는 고른 시·도 안에서 */
+export const SIDO17 = ['서울', '부산', '대구', '인천', '광주', '대전', '울산', '세종', '경기', '강원', '충북', '충남', '전북', '전남', '경북', '경남', '제주'];
+export function regionOpts(rows, picked, KO) {
+  const sc = {}, gc = {};
+  rows.forEach((x) => { sc[x.sido] = (sc[x.sido] || 0) + 1; if (x.sgg && picked.includes(x.sido)) { const k = x.sido + '|' + x.sgg; gc[k] = (gc[k] || 0) + 1; } });
+  const extra = Object.keys(sc).filter((d) => !SIDO17.includes(d) && /^[가-힣]{2,}$/.test(d)).sort((a, b) => KO.compare(a, b));
+  const sidos = [...SIDO17, ...extra].map((d) => [d, `${d} (${(sc[d] || 0).toLocaleString()})`]);
+  const sggs = Object.keys(gc).sort((a, b) => KO.compare(a, b)).map((k) => { const [d, g] = k.split('|'); return [k, `${picked.length > 1 ? `${d} ${g}` : g} (${gc[k].toLocaleString()})`]; });
+  return { sidos, sggs };
+}

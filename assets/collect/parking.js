@@ -3,7 +3,7 @@
  *  찾기(시·도 · 시군구 · 검색어 · 면수 · 공영/민영 · 노상/노외/부설) → 고치기 · 삭제 · 직접 추가 → 엑셀 저장 · 고객사 리스트에 넣기
  *  이 PC(IndexedDB)는 빨리 열기 위한 복사본이고, 진짜 명단은 서버 표 parking_lot 에 있습니다 (어느 PC에서든 같은 명단).
  */
-import { mselHtml, mselBind } from './msel.js';
+import { mselHtml, mselBind, regionOpts } from './msel.js';
 export function makePark(ctx) {
   const { sb, body, D, digits, tel, nowIso, loadXlsxLib, isOpen, redrawTabs } = ctx;
   const P = { db: null, loading: null, msg: '', q: '', sidos: [], sggs: [], min: 0, max: 0, kind: '', type: '', hasTel: false, notReg: false, limit: 100 };
@@ -257,9 +257,7 @@ export function makePark(ctx) {
     const list = started ? filtered() : [], show = list.slice(0, P.limit);
     const reg = new Set(D.sites.map((x) => nmKey(x.name)));
     const cnt = (f) => every.filter(f).length;
-    const sidos = [...new Set(every.map((x) => x.sido))].sort((a, b) => KO.compare(a, b));
-    const sggs = !P.sidos.length ? [] : [...new Set(every.filter((x) => x.sgg && P.sidos.includes(x.sido)).map((x) => x.sido + '|' + x.sgg))]
-      .sort((a, b) => KO.compare(a, b)).map((k) => { const [d, g] = k.split('|'); return [k, P.sidos.length > 1 ? `${d} ${g}` : g]; });
+    const { sidos, sggs } = regionOpts(every, P.sidos, KO);
     const hidden = Object.values(db.list).filter((a) => a.hidden).length;
     const fileBtn = (label, cls) => `<label class="btn ${cls}" style="cursor:pointer">${label}<input type="file" id="pk-file" accept=".csv,.xls,.xlsx" style="display:none"></label>`;
     const how = '<a href="https://www.data.go.kr/data/15012896/standard.do" target="_blank" rel="noopener"><b>data.go.kr → 전국주차장정보표준데이터</b></a>에서 csv 또는 xls 파일을 내려받아 올립니다. (전국 공영·민영 주차장 약 1만 9천 곳 · 관리기관 전화 포함 · 매월 갱신)';
@@ -274,7 +272,7 @@ export function makePark(ctx) {
       <p id="pk-msg" role="status" style="margin:8px 0;font-weight:700;white-space:pre-wrap;${P.msg ? '' : 'display:none'}">${esc(P.msg)}</p>
       ${started ? `
       <div class="kp-filter">
-        ${mselHtml({ id: 'pk-sido', all: '전국', options: sidos.map((d) => [d, d]), selected: P.sidos })}
+        ${mselHtml({ id: 'pk-sido', all: '전국', options: sidos, selected: P.sidos })}
         ${mselHtml({ id: 'pk-sgg', all: '시·군·구 전체', placeholder: '시·군·구 (시·도를 먼저)', options: sggs, selected: P.sggs })}
         <div class="kp-search"><select id="pk-qf" aria-label="찾을 곳">${QF.map(([v, n]) => `<option value="${v}"${(P.qf || 'all') === v ? ' selected' : ''}>${n}</option>`).join('')}</select><input id="pk-q" type="search" placeholder="${{ all: '검색어', name: '예) 시청 주차장', addr: '예) 동안구, 관악대로', tel: '예) 031-8045', mgr: '예) 시설관리공단', memo: '메모 내용' }[P.qf || 'all']}" value="${esc(P.q)}"></div>
         <label class="kp-hh">면수 <input id="pk-min" inputmode="numeric" value="${P.min || ''}" placeholder="0" aria-label="면수 이상"> 이상 ~ <input id="pk-max" inputmode="numeric" value="${P.max || ''}" placeholder="제한 없음" aria-label="면수 이하"> 이하</label>
