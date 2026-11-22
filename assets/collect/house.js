@@ -15,7 +15,8 @@ export function makeHouse(ctx) {
   const h32 = (s) => { let h = 5381; for (let i = 0; i < s.length; i++) h = ((h << 5) + h + s.charCodeAt(i)) | 0; return (h >>> 0).toString(36) + s.length.toString(36); };
   const nmKey = (s) => String(s || '').replace(/\s|\(.*?\)/g, '');
   const SIDO_SHORT = (s) => String(s || '').replace(/특별자치시|특별자치도|특별시|광역시/, '').replace(/^(경상|전라|충청)(남|북)도$/, (m, a, b) => a[0] + b).replace(/도$/, '') || '기타';
-  const KINDS = ['아파트', '연립', '다세대', '도시형생활주택', '기숙사', '기타'];
+  const KINDS = ['아파트', '연립', '다세대', '빌라', '도시형생활주택', '기숙사', '기타'];
+  const KGROUPS = [['아파트', '아파트'], ['빌라', '빌라 (연립·다세대)'], ['도시형생활주택', '도시형생활주택'], ['기숙사', '기숙사'], ['기타', '기타 (주상복합 등)']];
   let BJD = null;   // { 시군구코드: [이름, [[법정동코드, 동이름], …]] } (assets/collect/bjd.json, 행정표준코드 법정동)
   async function bjd() { if (!BJD) BJD = await fetch('/assets/collect/bjd.json').then((r) => r.json()); return BJD; }
 
@@ -116,14 +117,31 @@ export function makeHouse(ctx) {
 
 
   /* ---------- 건축물대장에서 받아 오기 ---------- */
-  const kindOf = (main, etc) => { const t = `${main} ${etc}`; return /도시형/.test(t) ? '도시형생활주택' : /아파트/.test(main) ? '아파트' : /연립/.test(t) ? '연립' : /다세대/.test(t) ? '다세대' : /기숙사/.test(t) ? '기숙사' : /아파트/.test(etc) ? '아파트' : '기타'; };
-  const RANK = { 도시형생활주택: 1, 아파트: 2, 연립: 3, 다세대: 4, 기숙사: 5, 기타: 6 };
+  // 건축물대장 용도로 구분. '공동주택'처럼 뭉뚱그려 적힌 곳은 이름·층수로 추정(est)
+  function kindOf(main, etc, name, flr, hh) {
+    const t = `${main} ${etc}`;
+    if (/도시형/.test(t)) return ['도시형생활주택', 0];
+    if (/아파트/.test(t)) return ['아파트', 0];
+    if (/연립/.test(t)) return ['연립', 0];
+    if (/다세대/.test(t)) return ['다세대', 0];
+    if (/기숙사/.test(t)) return ['기숙사', 0];
+    if (!/공동주택|주택/.test(main)) return ['기타', 0];           // 업무·근생 건물 안의 주택(주상복합 등)
+    if (/아파트|apt/i.test(name || '')) return ['아파트', 1];
+    if (/빌라|빌$|빌\s|맨션|하우스|타운|팰리스|캐슬|하이츠|빌리지|주택/.test(name || '')) return [(flr || 0) >= 6 && (hh || 0) >= 20 ? '아파트' : '빌라', 1];
+    return [(flr || 0) >= 6 && (hh || 0) >= 20 ? '아파트' : '빌라', 1];               // 6층 이상·20세대 이상은 아파트, 나머지는 빌라(1층 필로티 감안)
+  }
+  const RANK = { 도시형생활주택: 1, 아파트: 2, 연립: 3, 다세대: 4, 빌라: 5, 기숙사: 6, 기타: 7 };
+  const GROUP = { 아파트: '아파트', 연립: '빌라', 다세대: '빌라', 빌라: '빌라', 도시형생활주택: '도시형생활주택', 기숙사: '기숙사', 기타: '기타' };
+  function kindAll(a) {
+    const ks = Object.values(a.b || {}).map((x) => kindOf(x[6], x[7], x[8], x[3], x[0])).sort((p, q) => (p[1] - q[1]) || (RANK[p[0]] - RANK[q[0]]));
+    return ks.length ? [ks[0][0], ks[0][1]] : [a.kind || '기타', 0];
+  }
   function recalc(a) {   // 같은 대지의 여러 동 합치기
     const bs = Object.values(a.b || {});
     a.hh = bs.reduce((s, x) => s + (x[0] || 0), 0); a.park = bs.reduce((s, x) => s + (x[1] || 0), 0); a.mech = bs.reduce((s, x) => s + (x[2] || 0), 0);
     a.flr = Math.max(0, ...bs.map((x) => x[3] || 0)); a.dongs = bs.length;
     a.use = bs.map((x) => x[4]).filter(Boolean).sort()[0] || '';
-    a.kind = bs.map((x) => kindOf(x[6], x[7])).sort((p, q) => RANK[p] - RANK[q])[0] || '기타';
+    [a.kind, a.est] = kindAll(a);
     const nm = [...new Set(bs.map((x) => x[8]).filter(Boolean))];
     a.name = nm.length ? nm.sort((p, q) => p.length - q.length)[0] : '';
   }
@@ -176,7 +194,24 @@ export function makeHouse(ctx) {
   }
 
   /* ---------- 찾기 ---------- */
-  const merged = (a) => { const my = a.my || {}; return Object.assign({}, a, { name: my.name || a.name, tel: my.tel || '', memo: my.memo || '' }); };
+  // 아파트 명단(K-apt)의 관리사무소 전화를 주소로 맞춰 붙이기
+  let KT = null, ktLoading = false;
+  const PROV = /^(서울|부산|대구|인천|광주|대전|울산|세종|경기|강원|충청|충북|충남|전라|전북|전남|경상|경북|경남|제주)/;
+  const jkey = (s) => { const t = (s || '').replace(/\(.*?\)/g, ' ').replace(/번지/g, '').trim().split(/\s+/); if (t.length > 2 && PROV.test(t[0])) t.shift(); const n = t.findIndex((w, i) => i > 1 && /^(산)?\d+(-\d+)?$/.test(w)); return (n > 0 ? t.slice(0, n + 1) : t).join('').replace(/-0+$/, ''); };
+  async function loadKT() {
+    if (KT || ktLoading || !ctx.kapt) return; ktLoading = true;
+    try {
+      const rows = await ctx.kapt(); const m = new Map();
+      rows.forEach((k) => { if (!k.tel) return; [k.addr, k.doro].forEach((s) => { const key = jkey(s); if (key.length > 6 && !m.has(key)) m.set(key, k); }); });
+      KT = m; if (isOpen()) draw();
+    } catch (e) { KT = new Map(); } finally { ktLoading = false; }
+  }
+  const ktFind = (a) => (KT && (KT.get(jkey(a.jibun)) || KT.get(jkey(a.doro)))) || null;
+  const merged = (a) => {
+    const my = a.my || {}, k = my.tel ? null : ktFind(a);
+    const [kind, est] = a.b && !a.manual ? kindAll(a) : [a.kind, 0];
+    return Object.assign({}, a, { kind, est, name: my.name || a.name || (k && k.name) || '', tel: my.tel || (k && k.tel) || '', telK: !!(k && !my.tel), memo: my.memo || '' });
+  };
   const all = () => Object.values(P.db.list).filter((a) => !a.hidden).map(merged);
   const QF = [['all', '전체'], ['name', '건물명'], ['addr', '주소'], ['tel', '전화번호'], ['memo', '메모']];
   function match(x, f, qq, qd) {
@@ -191,7 +226,7 @@ export function makeHouse(ctx) {
   function filtered() {
     const qq = P.q.replace(/\s/g, ''), qd = digits(P.q), reg = new Set(D.sites.map((x) => nmKey(x.name)));
     return all().filter((x) => (!P.sidos.length || P.sidos.includes(x.sido)) && (!P.sggs.length || P.sggs.includes(x.sido + '|' + x.sgg))
-        && (!P.kinds.length || P.kinds.includes(x.kind)) && (!P.min || (x.hh || 0) >= P.min) && (!P.max || (x.hh || 0) <= P.max)
+        && (!P.kinds.length || P.kinds.includes(GROUP[x.kind] || '기타')) && (!P.min || (x.hh || 0) >= P.min) && (!P.max || (x.hh || 0) <= P.max)
         && (!P.pmin || (x.park || 0) >= P.pmin) && (!P.mech || x.mech > 0)
         && (!P.hasTel || x.tel) && (!P.noTel || !x.tel) && (!P.notReg || !reg.has(nmKey(x.name)))
         && (!qq || match(x, P.qf, qq, qd)))
@@ -237,7 +272,7 @@ export function makeHouse(ctx) {
   async function excel(list) {
     await loadXlsxLib();
     const head = ['시·도', '시·군·구', '동', '건물명', '구분', '세대수', '주차대수', '기계식 주차', '지상 층수', '동 수', '사용승인일', '전화', '메모', '도로명 주소', '지번 주소'];
-    const rows = list.map((x) => [x.sido, x.sgg, x.dongName || '', x.name, x.kind, x.hh || '', x.park || '', x.mech || '', x.flr || '', x.dongs || '', x.use || '', tel(x.tel), x.memo, x.doro || '', x.jibun || '']);
+    const rows = list.map((x) => [x.sido, x.sgg, x.dongName || '', x.name, (GROUP[x.kind] || '기타') + (x.kind !== GROUP[x.kind] ? `(${x.kind})` : '') + (x.est ? ' 추정' : ''), x.hh || '', x.park || '', x.mech || '', x.flr || '', x.dongs || '', x.use || '', tel(x.tel), x.memo, x.doro || '', x.jibun || '']);
     const ws = XLSX.utils.aoa_to_sheet([head].concat(rows));
     ws['!cols'] = [6, 14, 10, 24, 12, 7, 8, 9, 8, 6, 11, 14, 24, 36, 36].map((w) => ({ wch: w }));
     ws['!autofilter'] = { ref: XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: rows.length, c: head.length - 1 } }) };
@@ -272,6 +307,7 @@ export function makeHouse(ctx) {
     const s = root.querySelector('#hs-sync'); if (s) s.textContent = S.note;
   }
   async function draw() {
+    loadKT();
     if (!P.db || !BJD) { body().innerHTML = '<p class="hint">불러오는 중…</p>'; await Promise.all([load(), bjd()]); if (!isOpen()) return; }
     const db = P.db, every = all(), started = every.length > 0;
     const list = started ? filtered() : [], show = list.slice(0, P.limit);
@@ -289,7 +325,7 @@ export function makeHouse(ctx) {
       <p id="hs-sync" class="hint" style="margin:0 0 8px;font-weight:700">${esc(S.note)}</p>
       ${started ? `<div class="kp-sum" style="grid-template-columns:repeat(4,auto) 1fr">
         <div><b>${every.length.toLocaleString()}</b><span>전체</span></div>
-        <div><b>${cnt((x) => x.kind === '연립' || x.kind === '다세대').toLocaleString()}</b><span>빌라(연립·다세대)</span></div>
+        <div><b>${cnt((x) => GROUP[x.kind] === '빌라').toLocaleString()}</b><span>빌라</span></div>
         <div><b>${cnt((x) => x.kind === '아파트' && (x.hh || 0) <= 300).toLocaleString()}</b><span>300세대 이하 아파트</span></div>
         <div><b>${cnt((x) => x.kind === '도시형생활주택').toLocaleString()}</b><span>도시형생활주택</span></div>
       </div>` : ''}
@@ -310,7 +346,7 @@ export function makeHouse(ctx) {
         <div class="kp-search"><select id="hs-qf" aria-label="찾을 곳">${QF.map(([v, n]) => `<option value="${v}"${P.qf === v ? ' selected' : ''}>${n}</option>`).join('')}</select><input id="hs-q" type="search" placeholder="${{ all: '검색어', name: '예) OO빌라', addr: '예) 평촌동, 관악대로', tel: '예) 010-1234', memo: '메모 내용' }[P.qf]}" value="${esc(P.q)}"></div>
       </div>
       <div class="kp-filter">
-        ${mselHtml({ id: 'hs-kind', all: '구분 전체', options: KINDS.map((k) => [k, k]), selected: P.kinds })}
+        ${mselHtml({ id: 'hs-kind', all: '구분 전체', options: KGROUPS, selected: P.kinds })}
         <label class="kp-hh">세대수 <input id="hs-min" inputmode="numeric" value="${P.min || ''}" placeholder="0" aria-label="세대수 이상"> 이상 ~ <input id="hs-max" inputmode="numeric" value="${P.max || ''}" placeholder="제한 없음" aria-label="세대수 이하"> 이하</label>
         <label class="kp-hh">주차 <input id="hs-pmin" inputmode="numeric" value="${P.pmin || ''}" placeholder="0"> 대 이상</label>
       </div>
@@ -324,7 +360,7 @@ export function makeHouse(ctx) {
       <div class="kp-bar"><span class="kp-count"><b>${list.length.toLocaleString()}</b>곳</span>
         <div class="btns"><button class="btn btn-primary btn-sm" type="button" id="hs-xlsx"${list.length ? '' : ' disabled'}>⬇ 엑셀 저장</button><button class="btn btn-line btn-sm" type="button" id="hs-imp"${list.length ? '' : ' disabled'}>＋ 고객사 리스트에 넣기</button><button class="btn btn-line btn-sm" type="button" id="hs-add">＋ 건물 직접 추가</button></div></div>
       <div class="tbl-wrap kp-tbl"><table><thead><tr><th>지역</th><th>건물명 · 주소 <span class="hint" style="font-weight:400">(누르면 고치기 · 삭제)</span></th><th>구분</th><th>세대</th><th>주차</th><th>층</th><th>사용승인</th></tr></thead><tbody>
-        ${show.length ? show.map((x) => `<tr data-hs="${esc(x.code)}"><td>${esc([x.sgg, x.dongName].filter(Boolean).join(' '))}</td><td><b>${esc(x.name || '(이름 없음)')}</b>${reg.has(nmKey(x.name)) && x.name ? ' <span class="status st-sent">등록됨</span>' : ''}${x.manual ? ' <span class="hint">(직접 추가)</span>' : ''}${x.tel ? ` <a href="tel:${digits(x.tel)}">☎ ${esc(tel(x.tel))}</a>` : ''}${x.memo ? `<br><span class="hint" style="color:var(--brand)">📝 ${esc(x.memo)}</span>` : ''}${x.doro || x.jibun ? `<br><span class="hint">${esc(x.doro || x.jibun)}</span>` : ''}</td><td style="white-space:nowrap">${esc(x.kind)}${x.dongs > 1 ? `<br><span class="hint">${x.dongs}개 동</span>` : ''}</td><td>${x.hh || ''}</td><td style="white-space:nowrap">${x.park || ''}${x.mech ? `<br><span class="hint">기계식 ${x.mech}</span>` : ''}</td><td>${x.flr || ''}</td><td style="white-space:nowrap">${esc((x.use || '').slice(0, 7))}</td></tr>`).join('') : '<tr><td colspan="7" class="hint">조건에 맞는 건물이 없습니다.</td></tr>'}
+        ${show.length ? show.map((x) => `<tr data-hs="${esc(x.code)}"><td>${esc([x.sgg, x.dongName].filter(Boolean).join(' '))}</td><td><b>${esc(x.name || '(이름 없음)')}</b>${reg.has(nmKey(x.name)) && x.name ? ' <span class="status st-sent">등록됨</span>' : ''}${x.manual ? ' <span class="hint">(직접 추가)</span>' : ''}${x.tel ? ` <a href="tel:${digits(x.tel)}">☎ ${esc(tel(x.tel))}</a>${x.telK ? ' <span class="hint">(관리사무소)</span>' : ''}` : ''}${x.memo ? `<br><span class="hint" style="color:var(--brand)">📝 ${esc(x.memo)}</span>` : ''}${x.doro || x.jibun ? `<br><span class="hint">${esc(x.doro || x.jibun)}</span>` : ''}</td><td style="white-space:nowrap"><span class="hk hk-${{ 아파트: 'a', 빌라: 'v', 도시형생활주택: 'd' }[GROUP[x.kind]] || 'e'}">${esc(GROUP[x.kind] === '도시형생활주택' ? '도시형' : (GROUP[x.kind] || '기타'))}</span>${(GROUP[x.kind] === '빌라' && x.kind !== '빌라') || x.est ? `<br><span class="hint"${x.est ? ' title="건축물대장에 \'공동주택\'으로만 적혀 있어 이름·층수로 추정"' : ''}>${[GROUP[x.kind] === '빌라' && x.kind !== '빌라' ? x.kind : '', x.est ? '추정' : ''].filter(Boolean).join(' · ')}</span>` : ''}${x.dongs > 1 ? `<br><span class="hint">${x.dongs}개 동</span>` : ''}</td><td>${x.hh || ''}</td><td style="white-space:nowrap">${x.park || ''}${x.mech ? `<br><span class="hint">기계식 ${x.mech}</span>` : ''}</td><td>${x.flr || ''}</td><td style="white-space:nowrap">${esc((x.use || '').slice(0, 7))}</td></tr>`).join('') : '<tr><td colspan="7" class="hint">조건에 맞는 건물이 없습니다.</td></tr>'}
       </tbody></table></div>
       ${list.length > show.length ? `<div class="btns" style="justify-content:center;margin-top:8px"><button class="btn btn-line btn-sm" type="button" id="hs-more">더 보기 (${show.length.toLocaleString()} / ${list.length.toLocaleString()})</button></div>` : ''}
       <details class="kp-more"><summary>⚙ 명단 관리</summary>

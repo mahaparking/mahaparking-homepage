@@ -685,7 +685,7 @@ async function drawKapt() {
   root.querySelectorAll('[data-kinfo]').forEach((tr) => { tr.onclick = (e) => { if (e.target.closest('a')) return; kEdit(tr.dataset.kinfo); }; });
 }
 
-const HOUSE = makeHouse({ sb, body, D, digits, tel, nowIso, loadXlsxLib, api, isOpen: () => CV.sub === 'house' });
+const HOUSE = makeHouse({ sb, body, D, digits, tel, nowIso, loadXlsxLib, api, kapt: async () => { await kaptLoad(); return kaptRows(); }, isOpen: () => CV.sub === 'house' });
 const PARK = makePark({ sb, body, D, digits, tel, nowIso, loadXlsxLib, isOpen: () => CV.sub === 'park' });
 async function load() {
   root.innerHTML = '<p class="hint">불러오는 중…</p>';
