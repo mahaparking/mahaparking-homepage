@@ -169,7 +169,7 @@ export function makePark(ctx) {
   function filtered() {
     const qq = P.q.replace(/\s/g, ''), qd = digits(P.q), reg = new Set(D.sites.map((x) => nmKey(x.name)));
     return all().filter((x) => (!P.sidos.length || P.sidos.includes(x.sido)) && (!P.sggs.length || P.sggs.includes(x.sido + '|' + x.sgg)) && (!P.kind || x.kind === P.kind) && (!P.type || x.type === P.type)
-        && (!P.min || (x.spaces || 0) >= P.min) && (!P.hasTel || x.tel) && (!P.notReg || !reg.has(nmKey(x.name)))
+        && (!P.min || (x.spaces || 0) >= P.min) && (!P.hasAddr || x.doro || x.jibun) && (!P.hasTel || x.tel) && (!P.notReg || !reg.has(nmKey(x.name)))
         && (!qq || match(x, P.qf, qq, qd)))
       .sort((a, b) => KO.compare(a.sido + a.sgg + a.name, b.sido + b.sgg + b.name));
   }
@@ -283,8 +283,9 @@ export function makePark(ctx) {
         <select id="pk-kind"><option value="">공영 · 민영</option>${['공영', '민영'].map((k) => `<option${P.kind === k ? ' selected' : ''}>${k}</option>`).join('')}</select>
         <select id="pk-type"><option value="">노상 · 노외 · 부설</option>${['노외', '노상', '부설'].map((k) => `<option${P.type === k ? ' selected' : ''}>${k}</option>`).join('')}</select>
         <label class="sl-chk"><input type="checkbox" id="pk-tel"${P.hasTel ? ' checked' : ''}> 전화 있는 곳만</label>
+        <label class="sl-chk"><input type="checkbox" id="pk-hasaddr"${P.hasAddr ? ' checked' : ''}> 주소 있는 곳만</label>
         <label class="sl-chk"><input type="checkbox" id="pk-notreg"${P.notReg ? ' checked' : ''}> 고객사 리스트에 없는 곳만</label>
-        ${P.q || P.sidos.length || P.min || P.kind || P.type || P.hasTel || P.notReg ? '<button class="btn btn-line btn-sm" type="button" id="pk-clear">조건 지우기</button>' : ''}
+        ${P.q || P.sidos.length || P.min || P.kind || P.type || P.hasTel || P.hasAddr || P.notReg ? '<button class="btn btn-line btn-sm" type="button" id="pk-clear">조건 지우기</button>' : ''}
       </div>
       <div class="kp-bar"><span class="kp-count"><b>${list.length.toLocaleString()}</b>곳</span>
         <div class="btns"><button class="btn btn-primary btn-sm" type="button" id="pk-xlsx"${list.length ? '' : ' disabled'}>⬇ 엑셀 저장</button><button class="btn btn-line btn-sm" type="button" id="pk-imp"${list.length ? '' : ' disabled'}>＋ 고객사 리스트에 넣기</button><button class="btn btn-line btn-sm" type="button" id="pk-add">＋ 주차장 직접 추가</button></div></div>
@@ -310,8 +311,9 @@ export function makePark(ctx) {
     on('#pk-kind', 'onchange', (e) => { P.kind = e.target.value; re(); });
     on('#pk-type', 'onchange', (e) => { P.type = e.target.value; re(); });
     on('#pk-tel', 'onchange', (e) => { P.hasTel = e.target.checked; re(); });
+    on('#pk-hasaddr', 'onchange', (e) => { P.hasAddr = e.target.checked; re(); });
     on('#pk-notreg', 'onchange', (e) => { P.notReg = e.target.checked; re(); });
-    on('#pk-clear', 'onclick', () => { Object.assign(P, { q: '', qf: 'all', sidos: [], sggs: [], min: 0, kind: '', type: '', hasTel: false, notReg: false }); re(); });
+    on('#pk-clear', 'onclick', () => { Object.assign(P, { q: '', qf: 'all', sidos: [], sggs: [], min: 0, kind: '', type: '', hasTel: false, hasAddr: false, notReg: false }); re(); });
     on('#pk-more', 'onclick', () => { P.limit += 300; draw(); });
     on('#pk-xlsx', 'onclick', async () => { try { await excel(list); } catch (e) { P.msg = e.message; paint(); } });
     on('#pk-imp', 'onclick', () => toSites(list));
