@@ -80,7 +80,7 @@ function kFixNums(db) {
   return fixed > 0;
 }
 
-const K = { run: false, stop: false, msg: '', sidoF: 'all', q: '', db: null };
+const K = { run: false, stop: false, msg: '', sidoF: 'all', sgg: '', q: '', db: null, limit: 100 };
 /* 전국 2만 곳은 localStorage(5MB)에 다 안 들어가서 IndexedDB에 저장합니다. */
 const kIdb = () => new Promise((ok, no) => { const r = indexedDB.open('maha_kapt', 1); r.onupgradeneeded = () => r.result.createObjectStore('kv'); r.onsuccess = () => ok(r.result); r.onerror = () => no(r.error); });
 async function kIdbGet(k) { const d = await kIdb(); return new Promise((ok) => { const t = d.transaction('kv').objectStore('kv').get(k); t.onsuccess = () => ok(t.result); t.onerror = () => ok(null); }); }
@@ -115,13 +115,30 @@ async function kaptSave() {
 const SENT_KEY = 'maha_kapt_sent_v1';
 const KS = { sent: {}, at: '', off: false, busy: false, again: false, timer: 0, note: '' };
 const h32 = (s) => { let h = 5381; for (let i = 0; i < s.length; i++) h = ((h << 5) + h + s.charCodeAt(i)) | 0; return (h >>> 0).toString(36) + s.length.toString(36); };
-function kRow(code) {   // 서버에 올릴 한 단지 (파일 칸과 같은 값은 빼서 용량 줄이기)
+function kRow(code) {   // 서버에 올릴 한 단지 — 용량을 줄이려고 파일 칸 이름은 _meta 에 한 번만 두고 값만 순서대로(rv) 보냄
   const a = K.db.list[code] || null, i = K.db.info[code];
+  let list = a;
+  if (a && a.raw) {
+    const H = K.db.rawh || (K.db.rawh = []), rv = [];
+    Object.keys(a.raw).forEach((k) => { let ix = H.indexOf(k); if (ix < 0) { H.push(k); ix = H.length - 1; } rv[ix] = a.raw[k]; });
+    for (let x = 0; x < rv.length; x++) if (rv[x] === undefined) rv[x] = null;
+    list = Object.assign({}, a, { rv }); delete list.raw;
+  }
   let info = null;
-  if (i) { info = Object.assign({}, i); if (i.raw && a && a.raw) { const r = {}; Object.keys(i.raw).forEach((k) => { if (a.raw[k] !== i.raw[k]) r[k] = i.raw[k]; }); info.raw = r; } }
-  return { code, list: a, info };
+  if (i) {
+    info = Object.assign({}, i);
+    if (i.raw && a && a.raw) { const r = {}; Object.keys(i.raw).forEach((k) => { if (a.raw[k] !== i.raw[k]) r[k] = i.raw[k]; }); info.raw = r; }
+    if (a) Object.keys(info).forEach((k) => { if (k !== 'code' && k !== 'raw' && info[k] === a[k]) delete info[k]; });   // 목록과 같은 값은 빼기
+  }
+  return { code, list, info };
 }
-const kMeta = () => ({ code: '_meta', list: { sidos: K.db.sidos, listed: K.db.listed, fileAt: K.db.fileAt || null, fileCnt: K.db.fileCnt || null, resetAt: K.db.resetAt || null, numFix: K.db.numFix || 0 }, info: null });
+function kUnRow(l) {   // 서버 → 이 PC: rv(값 배열)를 다시 raw(칸 이름: 값)로
+  if (!l || !l.rv) return l;
+  const H = K.db.rawh || [], raw = {};
+  l.rv.forEach((v, ix) => { if (v !== null && v !== undefined && H[ix]) raw[H[ix]] = v; });
+  const o = Object.assign({}, l, { raw }); delete o.rv; return o;
+}
+const kMeta = () => ({ code: '_meta', list: { sidos: K.db.sidos, listed: K.db.listed, fileAt: K.db.fileAt || null, fileCnt: K.db.fileCnt || null, resetAt: K.db.resetAt || null, numFix: K.db.numFix || 0, rawh: K.db.rawh || [] }, info: null });
 async function kKeepSent() { try { await kIdbSet(SENT_KEY, { sent: KS.sent, at: KS.at }); } catch (e) {} }
 function kOff(e) {
   if (/kapt_complex|schema cache|does not exist/i.test((e && e.message) || '')) { KS.off = true; KS.note = '⚠ 서버에 명단 표가 아직 없어 이 PC에만 저장됩니다. (supabase/kapt.sql 실행 필요)'; return true; }
@@ -143,10 +160,13 @@ async function kPull() {
     if (meta && meta.list && meta.list.resetAt && meta.list.resetAt !== (K.db.resetAt || null) && KS.at) {   // 다른 PC에서 "처음부터 다시" → 이 PC 복사본도 비우고 전부 다시 받기
       K.db = { sidos: K.db.sidos, listed: {}, list: {}, info: {}, resetAt: meta.list.resetAt }; KS.sent = {}; KS.at = ''; return kPull();
     }
+    if (meta && meta.list && meta.list.rawh) K.db.rawh = meta.list.rawh;
+    rows.sort((x, y) => (x.code === '_meta' ? -1 : y.code === '_meta' ? 1 : 0));
     rows.forEach((r) => {
       if (r.code === '_meta') { const m = r.list || {}; if (m.sidos) K.db.sidos = m.sidos; K.db.listed = m.listed || {}; K.db.fileAt = m.fileAt || K.db.fileAt; K.db.fileCnt = m.fileCnt || K.db.fileCnt; K.db.resetAt = m.resetAt || null; if (m.numFix) K.db.numFix = m.numFix; KS.sent._meta = h32(JSON.stringify(kMeta())); return; }
-      if (r.list) K.db.list[r.code] = r.list; else delete K.db.list[r.code];
-      if (r.info) { const i = r.info; if (i.raw && r.list && r.list.raw) i.raw = Object.assign({}, r.list.raw, i.raw); K.db.info[r.code] = i; } else delete K.db.info[r.code];
+      const L = kUnRow(r.list);
+      if (L) K.db.list[r.code] = L; else delete K.db.list[r.code];
+      if (r.info) { const i = Object.assign({}, r.info); if (i.raw && L && L.raw) i.raw = Object.assign({}, L.raw, i.raw); K.db.info[r.code] = i; } else delete K.db.info[r.code];
       KS.sent[r.code] = h32(JSON.stringify(kRow(r.code)));
     });
     if (rows.length) { KS.at = rows.reduce((m, r) => (r.updated_at > m ? r.updated_at : m), KS.at || ''); await kIdbSet(KAPT_KEY, K.db).catch(() => {}); await kKeepSent(); }
@@ -163,9 +183,9 @@ async function kPush() {
     do {
       KS.again = false;
       const rows = [], hs = {};
-      const m = kMeta(), mh = h32(JSON.stringify(m));
-      if (KS.sent._meta !== mh) { rows.push(m); hs._meta = mh; }
       new Set([...Object.keys(K.db.list), ...Object.keys(K.db.info)]).forEach((c) => { const r = kRow(c), h = h32(JSON.stringify(r)); if (KS.sent[c] !== h) { rows.push(r); hs[c] = h; } });
+      const m = kMeta(), mh = h32(JSON.stringify(m));   // 칸 이름 목록(rawh)이 늘었을 수 있어 단지들 다음에 계산하고, 올릴 때는 맨 앞에
+      if (KS.sent._meta !== mh) { rows.unshift(m); hs._meta = mh; }
       for (let i = 0; i < rows.length; i += 300) {
         const part = rows.slice(i, i + 300);
         const { error } = await sb.from('kapt_complex').upsert(part); if (error) throw error;
@@ -194,32 +214,27 @@ function kMerge(a, i) {
   x.memo = my.memo || '';
   return x;
 }
-const kaptRows = () => {
-  const db = K.db;
-  const pick = (o) => { const r = {}; Object.keys(o || {}).forEach((k) => { const v = o[k]; if (v !== null && v !== undefined && v !== '') r[k] = v; }); return r; };
-  return Object.values(db.list).filter((a) => !a.hidden && db.sidos.includes(a.sc)).map((a) => kMerge(a, db.info[a.code]));
-};
+const kaptRows = () => Object.values(K.db.list).filter((a) => !a.hidden).map((a) => kMerge(a, K.db.info[a.code]));
 function kaptCount() {
-  const db = K.db;
-  const all = Object.values(db.list).filter((a) => !a.hidden && db.sidos.includes(a.sc));
-  const target = all.filter((a) => !K.minHh || !a.households || a.households >= K.minHh);
-  const done = target.filter((a) => a.manual || (db.info[a.code] && db.info[a.code].raw)).length;
-  const phones = all.filter((a) => (a.my && a.my.tel) || (db.info[a.code] && db.info[a.code].tel)).length;
-  const listedAll = db.sidos.every((c) => db.listed[c]);
-  return { all: target.length, total: all.length, done, phones, listedAll, left: target.length - done };
+  const all = Object.values(K.db.list).filter((a) => !a.hidden);
+  const telOf = (a) => (a.my && a.my.tel !== undefined ? a.my.tel : (K.db.info[a.code] || {}).tel);
+  const faxOf = (a) => (a.my && a.my.fax !== undefined ? a.my.fax : (K.db.info[a.code] || {}).fax);
+  return { total: all.length, phones: all.filter(telOf).length, faxes: all.filter(faxOf).length, hidden: Object.values(K.db.list).length - all.length };
 }
-
-function kStatus() { const ct = kaptCount(), started = Object.keys(K.db.list).length > 0; return K.msg || (started ? `대상 ${ct.all.toLocaleString()}곳 중 ${ct.done.toLocaleString()}곳 확인 · 전화번호 ${ct.phones.toLocaleString()}곳` : '아직 받은 것이 없습니다.'); }
+function kStatus() { return K.msg || ''; }
 function kaptPaint() {
-  const ct = kaptCount();
-  const m = root.querySelector('#kp-msg'); if (m && K.db) m.textContent = kStatus();
+  const m = root.querySelector('#kp-msg'); if (m && K.db) { m.textContent = kStatus(); m.style.display = K.msg ? '' : 'none'; }
   const sy = root.querySelector('#kp-sync'); if (sy) sy.textContent = KS.note;
-  const b = root.querySelector('#kp-bar'); if (b) b.style.width = (ct.all ? Math.round((ct.done / ct.all) * 100) : 0) + '%';
 }
 
+const nmKey = (s) => String(s || '').replace(/\s|\(.*?\)/g, '');
 function kaptFiltered() {
   const qq = K.q.replace(/\s/g, '');
-  return kaptRows().filter((x) => (K.sidoF === 'all' || x.sc === K.sidoF) && (!K.hasTel || x.tel) && (!K.minHh || !x.households || x.households >= K.minHh) && (!qq || [x.name, x.sido, x.sigungu, x.dong, x.doro, x.addr].join(' ').replace(/\s/g, '').includes(qq)))
+  const reg = new Set(D.sites.map((x) => nmKey(x.name)));
+  return kaptRows().filter((x) => (K.sidoF === 'all' || x.sc === K.sidoF) && (!K.sgg || x.sigungu === K.sgg)
+      && (!K.hasTel || x.tel) && (!K.noTel || !x.tel) && (!K.notReg || !reg.has(nmKey(x.name)))
+      && (!K.minHh || (x.households || 0) >= K.minHh)
+      && (!qq || [x.name, x.sido, x.sigungu, x.dong, x.doro, x.addr, x.mcomp, x.memo].join(' ').replace(/\s/g, '').includes(qq)))
     .sort((a, b) => (a.sc + a.sigungu + a.name).localeCompare(b.sc + b.sigungu + b.name, 'ko'));
 }
 
@@ -409,67 +424,46 @@ async function kaptFile(file) {
     seen.forEach((sc) => { db.listed[sc] = true; });
     db.fileAt = new Date().toISOString().slice(0, 10); db.fileCnt = cnt;
     await kaptSave();
-    K.msg = `파일에서 ${cnt.toLocaleString()}곳을 읽었습니다${phones ? ` (관리사무소 전화·팩스 있는 곳 ${phones.toLocaleString()}곳은 바로 채움)` : ''}. 공공데이터 호출 없이 바로 씁니다.${phones ? ' 전화번호가 빈 곳만 [이어서 받기]나 [카카오 지도로 채우기]로 채우세요.' : ''}`;
+    K.msg = `파일에서 ${cnt.toLocaleString()}곳을 읽었습니다${phones ? ` (관리사무소 전화·팩스 있는 곳 ${phones.toLocaleString()}곳은 바로 채움)` : ''}. 공공데이터 호출 없이 바로 씁니다.${cnt > phones ? ` 전화번호가 없는 ${(cnt - phones).toLocaleString()}곳은 아래 [📞 전화번호 없는 곳 채우기]에서 채울 수 있습니다.` : ''}`;
   } catch (e) { K.msg = e.message; }
   drawKapt();
 }
 
 /* ---------- ② 관리사무소 전화·팩스 받기 (공공데이터: 한 단지 1번) + ③ 모자라면 카카오 지도로 채우기 ---------- */
 async function kaptRun(mode) {
-  const db = await kaptLoad(); K.trace = null;
+  const db = await kaptLoad();
   K.run = true; K.stop = false; K.msg = '시작합니다…'; drawKapt();
   try {
-    for (const sc of db.sidos) {   // 파일로 안 받은 지역만 공공데이터 목록 서비스로
-      if (K.stop) break;
-      if (db.listed[sc]) continue;
-      let page = 1, got = 0, total = 1;
-      while (got < total && !K.stop) {
-        const r = await api('/api/kapt', { action: 'list', sido: sc, page });
-        r.list.forEach((x) => { db.list[x.code] = Object.assign(db.list[x.code] || {}, x, { sc }); });
-        if (!r.list.length && page === 1 && r.trace) K.trace = r.trace;
-        got += r.list.length; total = r.total || got;
-        K.msg = `${KAPT_SIDO.find((x) => x[0] === sc)[1]} 단지 목록 ${got.toLocaleString()} / ${total.toLocaleString()}`; kaptPaint();
-        if (!r.list.length) break;
-        page++;
-      }
-      if (!K.stop && got > 0) db.listed[sc] = true;
-      kaptSave();
-    }
-    const want = (a) => !a.hidden && !a.manual && db.sidos.includes(a.sc) && (!K.minHh || !a.households || a.households >= K.minHh);
-    // 세대수 큰 단지부터 (영업 효과가 큰 곳 먼저)
-    const order = (l) => l.sort((a, b) => (b.households || 0) - (a.households || 0)).map((a) => a.code);
+    const order = (l) => l.sort((a, b) => (b.households || 0) - (a.households || 0)).map((a) => a.code);   // 세대수 큰 단지부터
+    const targets = kaptFiltered().filter((x) => !x.tel && !x.manual);
+    if (!targets.length) throw new Error('지금 보이는 단지 중 전화번호가 없는 곳이 없습니다.');
+    let left = targets.length;
     if (mode !== 'kakao') {
-      const fromKapt = (i) => i && i.raw && i.src !== 'kakao';   // 카카오로 채운 곳은 다음 날 공공데이터로 다시 확인
-      const todo = order(Object.values(db.list).filter((a) => want(a) && !fromKapt(db.info[a.code])));
+      const todo = order(targets.filter((x) => { const i = db.info[x.code]; return !(i && i.raw && i.src === 'kapt'); }));
       const CH = 16, chunks = [];
       for (let i = 0; i < todo.length; i += CH) chunks.push(todo.slice(i, i + CH));
-      let quota = '';
+      let quota = '', done = 0;
       const worker = async () => {
         while (chunks.length && !K.stop && !quota) {
           const c = chunks.shift();
           try {
             const r = await api('/api/kapt', { action: 'info', codes: c, detail: !c.every((code) => db.list[code] && db.list[code].file) });
-            r.info.forEach((x) => { if (x.ok) { x.src = 'kapt'; db.info[x.code] = x; } });
+            r.info.forEach((x) => { if (x.ok) { const prev = db.info[x.code] || {}; x.src = 'kapt'; db.info[x.code] = Object.assign({}, prev, x, { tel: x.tel || prev.tel || '', fax: x.fax || prev.fax || '' }); } });
           } catch (e) { if (/호출 횟수/.test(e.message)) { quota = e.message; return; } throw e; }
-          if (Math.random() < 0.1) kaptSave();
-          const ct = kaptCount();
-          K.msg = `관리사무소 전화·팩스 받는 중 (공공데이터)… ${ct.done.toLocaleString()} / ${ct.all.toLocaleString()}곳`; kaptPaint();
+          done += c.length; if (Math.random() < 0.1) kaptSave();
+          K.msg = `공공데이터로 전화·팩스 받는 중… ${done.toLocaleString()} / ${todo.length.toLocaleString()}곳`; kaptPaint();
         }
       };
       await Promise.all([worker(), worker(), worker()]);
       kaptSave();
-      if (quota && !K.stop) { K.msg = '공공데이터 오늘 횟수를 다 써서, 카카오 지도로 이어서 찾습니다…'; kaptPaint(); mode = 'kakao'; }
+      left = kaptFiltered().filter((x) => !x.tel && !x.manual).length;
+      if (quota && !K.stop && left) { K.msg = '공공데이터 오늘 횟수를 다 써서, 카카오 지도로 이어서 찾습니다…'; kaptPaint(); mode = 'kakao'; }
     }
-    if (mode === 'kakao' && !K.stop) await kakaoFill(order(Object.values(db.list).filter((a) => { const i = db.info[a.code] || {}; return want(a) && !(a.my && a.my.tel) && (!i.tel || !(i.doro || i.addr || a.doro || a.addr)); })));
+    if (mode === 'kakao' && !K.stop) await kakaoFill(order(kaptFiltered().filter((x) => !x.tel && !x.manual)));
     kaptSave();
-    const ct = kaptCount();
-    if (!ct.total && K.trace) { K.msg = '공공데이터에서 단지 목록이 0곳으로 왔습니다. 아래 응답 내용을 클로드에게 보여 주세요.\n' + K.trace.join('\n'); }
-    else if (!K.stop) K.msg = `끝났습니다. 대상 ${ct.all.toLocaleString()}곳 중 ${ct.done.toLocaleString()}곳 확인 · 전화번호 있는 곳 ${ct.phones.toLocaleString()}곳.${ct.left ? `\n남은 ${ct.left.toLocaleString()}곳은 내일 "이어서"를 누르거나 [카카오로 채우기]를 눌러 주세요.` : ''}`;
-    else K.msg = `멈췄습니다. ${ct.done.toLocaleString()} / ${ct.all.toLocaleString()}곳까지 받았습니다.`;
-  } catch (e) {
-    kaptSave();
-    K.msg = e.message;
-  }
+    left = kaptFiltered().filter((x) => !x.tel && !x.manual).length;
+    K.msg = K.stop ? '멈췄습니다.' : `끝났습니다. 전화번호를 못 찾은 곳 ${left.toLocaleString()}곳${left ? ' — 단지를 눌러 직접 넣거나, 내일 다시 받아 보세요.' : ''}`;
+  } catch (e) { kaptSave(); K.msg = e.message; }
   K.run = false; drawKapt();
 }
 /* 카카오 지도에서 "시군구 + 단지명 + 관리사무소"로 찾아 전화번호 채우기 */
@@ -560,59 +554,82 @@ function mount() {
 }
 async function drawKapt() {
   if (!K.db) { body().innerHTML = '<p class="hint">불러오는 중…</p>'; await kaptLoad(); if (CV.sub !== 'kapt') return; }
-  const db = K.db, ct = kaptCount(), started = Object.keys(db.list).length > 0;
-  const list = kaptFiltered(), show = list.slice(0, 300);
-  const pct = ct.all ? Math.round((ct.done / ct.all) * 100) : 0;
+  const db = K.db, ct = kaptCount(), started = ct.total > 0;
+  const list = started ? kaptFiltered() : [];
+  K.limit = K.limit || 100;
+  const show = list.slice(0, K.limit), noTel = list.filter((x) => !x.tel && !x.manual).length;
+  const sggs = K.sidoF === 'all' ? [] : [...new Set(Object.values(db.list).filter((a) => !a.hidden && a.sc === K.sidoF).map((a) => a.sigungu).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'ko'));
+  const fileBtn = (label, cls) => `<label class="btn ${cls}" style="cursor:pointer">${label}<input type="file" id="kp-file" accept=".xlsx,.xls,.csv" style="display:none"${K.run ? ' disabled' : ''}></label>`;
+  const how = `<a href="https://www.data.go.kr/data/15073271/fileData.do" target="_blank" rel="noopener"><b>data.go.kr → 국토교통부_공동주택 단지 기본 정보</b></a>에서 엑셀 파일을 내려받아 올립니다. (전국 약 2만 2천 곳 · 관리사무소 전화·팩스 포함 · 매주 갱신)`;
+  const reg = new Set(D.sites.map((x) => nmKey(x.name)));
   body().innerHTML = `
-    <p id="kp-sync" class="hint" style="margin:0 0 6px;font-weight:700">${esc(KS.note)}</p>
-    <p class="hint">국토교통부 공공데이터(K-apt에 등록된 아파트)로 전국 아파트 명단과 <b>관리사무소 전화·팩스</b>를 모읍니다. 빌라·상가 등은 <b>🔎 하나씩 찾기</b>를 쓰세요.</p>
-    <div class="sl-step"><b><span class="sl-no">1</span>단지 목록 — 공공데이터 파일 올리기 <span class="hint" style="font-weight:400">(추천 · 횟수 제한 없음)</span></b>
-      <ol class="hint" style="margin:4px 0 8px;padding-left:18px">
-        <li><a href="https://www.data.go.kr/data/15073271/fileData.do" target="_blank" rel="noopener"><b>data.go.kr → 국토교통부_공동주택 단지 기본 정보</b></a>에서 엑셀 파일을 내려받습니다. (전국 약 1만 8천 곳 · 매주 갱신)</li>
-        <li>아래 [파일 올리기]로 그 파일을 고르면 단지명·주소·세대수·주차대수·주차관제·관리업체가 한 번에 들어옵니다.</li>
-      </ol>
-      <div class="add-row" style="align-items:center"><label class="btn btn-line btn-sm" style="cursor:pointer">📂 파일 올리기<input type="file" id="kp-file" accept=".xlsx,.xls,.csv" style="display:none"${K.run ? ' disabled' : ''}></label>
-        <span class="hint">${db.fileCnt ? `✓ ${esc(db.fileAt || '')} 파일에서 ${db.fileCnt.toLocaleString()}곳 읽음` : '아직 파일을 올리지 않았습니다.'}</span></div>
+    <p id="kp-sync" class="hint" style="margin:0 0 8px;font-weight:700">${esc(KS.note)}</p>
+    ${started ? `
+    <div class="kp-sum">
+      <div><b>${ct.total.toLocaleString()}</b><span>단지</span></div>
+      <div><b>${ct.phones.toLocaleString()}</b><span>관리사무소 전화</span></div>
+      <div><b>${ct.faxes.toLocaleString()}</b><span>팩스</span></div>
+      <div class="kp-file"><span class="hint">${db.fileAt ? `파일 기준 ${esc(db.fileAt)}` : '직접 모은 명단'}</span>${fileBtn('📂 새 파일로 갱신', 'btn-line btn-sm')}</div>
+    </div>` : `
+    <div class="sl-step"><b><span class="sl-no">1</span>공공데이터 파일 올리기</b>
+      <p class="hint" style="margin:4px 0 10px">${how}</p>
+      ${fileBtn('📂 파일 올리기', 'btn-cta')}
+      <p class="hint" style="margin:10px 0 0">빌라 · 상가 · 오피스텔 등 아파트가 아닌 건물은 <b>🔎 하나씩 찾기</b>를 쓰세요.</p>
+    </div>`}
+    <p id="kp-msg" role="status" style="margin:8px 0;font-weight:700;white-space:pre-wrap;word-break:break-all;${K.msg ? '' : 'display:none'}">${esc(kStatus())}</p>
+    ${started ? `
+    <div class="kp-filter">
+      <select id="kp-sf"><option value="all">전국</option>${KAPT_SIDO.map(([c, n]) => `<option value="${c}"${K.sidoF === c ? ' selected' : ''}>${n}</option>`).join('')}</select>
+      <select id="kp-sgg"${sggs.length ? '' : ' disabled'}><option value="">${sggs.length ? '시·군·구 전체' : '시·군·구'}</option>${sggs.map((g) => `<option${K.sgg === g ? ' selected' : ''}>${esc(g)}</option>`).join('')}</select>
+      <input id="kp-q" type="search" placeholder="단지명 · 동 · 도로명 · 관리업체 · 메모" value="${esc(K.q)}">
+      <label class="kp-hh">세대수 <input id="kp-minhh" inputmode="numeric" value="${K.minHh || ''}" placeholder="0"> 이상</label>
     </div>
-    <div class="sl-step"><b><span class="sl-no">2</span>지역 고르기</b>
-      <div class="btns" style="margin:2px 0 6px"><button class="btn btn-line btn-sm" type="button" id="kp-sall"${K.run ? ' disabled' : ''}>전국 모두</button><button class="btn btn-line btn-sm" type="button" id="kp-snone"${K.run ? ' disabled' : ''}>모두 해제</button></div>
-      <div class="add-row" style="margin:4px 0;flex-wrap:wrap">${KAPT_SIDO.map(([c, n]) => `<label class="sl-chk"><input type="checkbox" data-ksido="${c}"${db.sidos.includes(c) ? ' checked' : ''}${K.run ? ' disabled' : ''}> ${n}${db.listed[c] ? ' <span class="hint">✓</span>' : ''}</label>`).join('')}</div>
-      <label class="add-row" style="align-items:center;margin:6px 0 0">세대수 <input id="kp-minhh" inputmode="numeric" value="${K.minHh || ''}" placeholder="예) 300" style="width:90px"${K.run ? ' disabled' : ''}> 이상인 단지만 <span class="hint">(비우면 전부)</span></label>
+    <div class="kp-filter kp-chk">
+      <label class="sl-chk"><input type="checkbox" id="kp-hastel"${K.hasTel ? ' checked' : ''}> 전화 있는 곳만</label>
+      <label class="sl-chk"><input type="checkbox" id="kp-notel"${K.noTel ? ' checked' : ''}> 전화 없는 곳만</label>
+      <label class="sl-chk"><input type="checkbox" id="kp-notreg"${K.notReg ? ' checked' : ''}> 고객사 리스트에 없는 곳만</label>
+      ${K.q || K.sidoF !== 'all' || K.minHh || K.hasTel || K.noTel || K.notReg ? '<button class="btn btn-line btn-sm" type="button" id="kp-clear">조건 지우기</button>' : ''}
     </div>
-    <div class="sl-step"><b><span class="sl-no">3</span>관리사무소 전화·팩스 받기</b>
+    <div class="kp-bar">
+      <span class="kp-count"><b>${list.length.toLocaleString()}</b>곳</span>
       <div class="btns">
-        ${K.run ? '<button class="btn btn-line" type="button" id="kp-stop">⏸ 멈추기</button>' : `<button class="btn btn-cta" type="button" id="kp-go">▶ ${ct.done ? '이어서 받기' : '받기'} (공공데이터)</button><button class="btn btn-line" type="button" id="kp-kakao">📍 카카오 지도로 채우기</button>`}
-        ${!K.run && started ? '<button class="btn btn-line btn-sm" type="button" id="kp-reset">처음부터 다시</button>' : ''}
-        ${K.run ? '' : '<button class="btn btn-line btn-sm" type="button" id="kp-check">🔎 연결 점검</button>'}
+        <button class="btn btn-primary btn-sm" type="button" id="kp-xlsx"${list.length ? '' : ' disabled'}>⬇ 엑셀 저장</button>
+        <button class="btn btn-line btn-sm" type="button" id="kp-imp"${list.length && !K.run ? '' : ' disabled'}>＋ 고객사 리스트에 넣기</button>
+        <button class="btn btn-line btn-sm" type="button" id="kp-add">＋ 단지 직접 추가</button>
       </div>
-      <div style="height:10px;background:var(--line);border-radius:6px;overflow:hidden;margin:10px 0 4px"><div id="kp-bar" style="height:100%;width:${pct}%;background:var(--brand);transition:width .3s"></div></div>
-      <p id="kp-msg" role="status" style="margin:0;font-weight:700;white-space:pre-wrap;word-break:break-all">${esc(kStatus())}</p>
-      <p class="hint" style="margin:4px 0 0">공공데이터는 <b>한 단지에 1번</b>씩 부르고, 세대수 큰 단지부터 받습니다. 하루 횟수를 다 쓰면 <b>카카오 지도</b>로 자동으로 이어서 찾습니다. 남은 곳은 다음 날 "이어서 받기"를 누르세요.</p>
     </div>
-    <div class="sl-step"><b><span class="sl-no">4</span>엑셀로 저장 · 고객사 리스트에 넣기</b>
-      <div class="add-row" style="margin:4px 0;align-items:center">
-        <select id="kp-sf" style="width:auto"><option value="all">전체 지역</option>${KAPT_SIDO.filter(([c]) => db.sidos.includes(c)).map(([c, n]) => `<option value="${c}"${K.sidoF === c ? ' selected' : ''}>${n}</option>`).join('')}</select>
-        <input id="kp-q" placeholder="시·군·구, 동, 단지명 찾기 (예: 수지구)" value="${esc(K.q)}" style="max-width:240px">
-        <label class="sl-chk"><input type="checkbox" id="kp-hastel"${K.hasTel ? ' checked' : ''}> 전화번호 있는 곳만</label>
-        <span><b>${list.length.toLocaleString()}</b>곳</span>
-      </div>
-      <div class="btns"><button class="btn btn-primary" type="button" id="kp-xlsx"${list.length ? '' : ' disabled'}>⬇ 엑셀 파일로 저장</button><button class="btn btn-line" type="button" id="kp-imp"${list.length && !K.run ? '' : ' disabled'}>＋ 보이는 곳을 고객사 리스트에 넣기</button><button class="btn btn-line" type="button" id="kp-add">＋ 단지 직접 추가</button></div>
-      <div class="tbl-wrap" style="margin-top:10px;max-height:420px;overflow:auto"><table><thead><tr><th>지역</th><th>단지명 · 주소 <span class="hint" style="font-weight:400">(누르면 고치기 · 삭제)</span></th><th>관리사무소 전화</th><th>팩스</th><th>세대</th><th>주차</th></tr></thead><tbody>
-        ${show.length ? show.map((x) => `<tr data-kinfo="${esc(x.code)}" style="cursor:pointer"><td>${esc([x.sigungu, x.dong].filter(Boolean).join(' '))}</td><td><b>${esc(x.name)}</b>${siteByName(x.name) ? ' <span class="status st-sent">등록됨</span>' : ''}${x.manual ? ' <span class="hint">(직접 추가)</span>' : ''}${x.memo ? `<br><span class="hint" style="color:var(--brand)">📝 ${esc(x.memo)}</span>` : ''}${x.doro || x.addr ? `<br><span class="hint">${x.zip ? '(' + esc(x.zip) + ') ' : ''}${esc(x.doro || x.addr)}</span>` : ''}</td><td style="white-space:nowrap">${x.tel ? `<a href="tel:${digits(x.tel)}">${esc(tel(x.tel))}</a>${x.src === 'kakao' ? ' <span class="hint">카카오</span>' : ''}` : '<span class="hint">-</span>'}</td><td style="white-space:nowrap">${esc(tel(x.fax)) || '<span class="hint">-</span>'}</td><td>${x.households || ''}</td><td>${x.parking || ''}</td></tr>`).join('') : '<tr><td colspan="6" class="empty">받은 단지가 없습니다.</td></tr>'}
-      </tbody></table></div>
-      ${list.length > show.length ? `<p class="hint">화면에는 앞의 300곳만 보입니다. 엑셀에는 ${list.length.toLocaleString()}곳이 모두 들어갑니다.</p>` : ''}
-    </div>
-    <p class="hint">⚠ 이 명단은 전화·방문·우편(DM) 영업용입니다. 광고 문자·팩스는 받는 분이 미리 동의한 경우에만 보낼 수 있습니다 (정보통신망법 제50조).</p>`;
+    <div class="tbl-wrap kp-tbl"><table><thead><tr><th>지역</th><th>단지명 · 주소 <span class="hint" style="font-weight:400">(누르면 고치기 · 삭제)</span></th><th>관리사무소 전화</th><th>팩스</th><th>세대</th><th>주차</th></tr></thead><tbody>
+      ${show.length ? show.map((x) => `<tr data-kinfo="${esc(x.code)}"><td>${esc([x.sigungu, x.dong].filter(Boolean).join(' '))}</td><td><b>${esc(x.name)}</b>${reg.has(nmKey(x.name)) ? ' <span class="status st-sent">등록됨</span>' : ''}${x.manual ? ' <span class="hint">(직접 추가)</span>' : ''}${x.memo ? `<br><span class="hint" style="color:var(--brand)">📝 ${esc(x.memo)}</span>` : ''}${x.doro || x.addr ? `<br><span class="hint">${esc(x.doro || x.addr)}</span>` : ''}</td><td style="white-space:nowrap">${x.tel ? `<a href="tel:${digits(x.tel)}">${esc(tel(x.tel))}</a>` : '<span class="hint">-</span>'}</td><td style="white-space:nowrap">${esc(tel(x.fax)) || '<span class="hint">-</span>'}</td><td>${x.households || ''}</td><td>${x.parking || ''}</td></tr>`).join('') : '<tr><td colspan="6" class="hint">조건에 맞는 단지가 없습니다.</td></tr>'}
+    </tbody></table></div>
+    ${list.length > show.length ? `<div class="btns" style="justify-content:center;margin-top:8px"><button class="btn btn-line btn-sm" type="button" id="kp-more">더 보기 (${show.length.toLocaleString()} / ${list.length.toLocaleString()})</button></div>` : ''}
+
+    <details class="kp-more"${K.run ? ' open' : ''}><summary>📞 전화번호 없는 곳 채우기 <span class="hint">(지금 조건에서 ${noTel.toLocaleString()}곳)</span></summary>
+      <p class="hint">파일에 전화번호가 없는 단지만 골라 <b>공공데이터</b>(한 단지에 1번 · 하루 횟수 제한)로 받고, 횟수를 다 쓰면 <b>카카오 지도</b>로 이어서 찾습니다.</p>
+      <div class="btns">${K.run ? '<button class="btn btn-line btn-sm" type="button" id="kp-stop">⏸ 멈추기</button>' : `<button class="btn btn-line btn-sm" type="button" id="kp-go"${noTel ? '' : ' disabled'}>▶ 공공데이터로 받기</button><button class="btn btn-line btn-sm" type="button" id="kp-kakao"${noTel ? '' : ' disabled'}>📍 카카오 지도로 찾기</button><button class="btn btn-line btn-sm" type="button" id="kp-check">🔎 연결 점검</button>`}</div>
+    </details>
+    <details class="kp-more"><summary>⚙ 명단 관리</summary>
+      <p class="hint">${ct.hidden ? `명단에서 지운 단지 ${ct.hidden.toLocaleString()}곳 (파일을 다시 올려도 나타나지 않습니다)` : '지운 단지가 없습니다.'}</p>
+      <div class="btns">${ct.hidden ? '<button class="btn btn-line btn-sm" type="button" id="kp-unhide">지운 단지 모두 되살리기</button>' : ''}<button class="btn btn-line btn-sm" type="button" id="kp-reset" style="color:var(--stop)"${K.run ? ' disabled' : ''}>명단 전체 지우기</button></div>
+      <p class="hint" style="margin-top:8px">${how}</p>
+    </details>` : ''}
+    <p class="hint" style="margin-top:14px">⚠ 이 명단은 전화·방문·우편(DM) 영업용입니다. 광고 문자·팩스는 받는 분이 미리 동의한 경우에만 보낼 수 있습니다 (정보통신망법 제50조).</p>`;
   const $$ = (x) => root.querySelector(x);
-  $$('#kp-file').onchange = (e) => { const f = e.target.files[0]; e.target.value = ''; if (f) kaptFile(f); };
-  root.querySelectorAll('[data-ksido]').forEach((c) => { c.onchange = () => { const s = new Set(db.sidos); if (c.checked) s.add(c.dataset.ksido); else s.delete(c.dataset.ksido); db.sidos = KAPT_SIDO.map((x) => x[0]).filter((x) => s.has(x)); kaptSave(); K.msg = ''; drawKapt(); }; });
-  const setS = (l) => { db.sidos = l; kaptSave(); K.msg = ''; drawKapt(); };
-  if ($$('#kp-sall')) $$('#kp-sall').onclick = () => setS(KAPT_SIDO.map((x) => x[0]));
-  if ($$('#kp-snone')) $$('#kp-snone').onclick = () => setS([]);
-  $$('#kp-minhh').onchange = (e) => { K.minHh = parseInt(digits(e.target.value), 10) || 0; try { localStorage.setItem('maha_kapt_minhh', K.minHh); } catch (x) {} K.msg = ''; drawKapt(); };
-  if ($$('#kp-go')) $$('#kp-go').onclick = () => { if (!db.sidos.length) { K.msg = '지역을 하나 이상 골라 주세요.'; kaptPaint(); return; } kaptRun('kapt'); };
-  if ($$('#kp-kakao')) $$('#kp-kakao').onclick = () => { if (!db.sidos.length) { K.msg = '지역을 하나 이상 골라 주세요.'; kaptPaint(); return; } kaptRun('kakao'); };
-  if ($$('#kp-check')) $$('#kp-check').onclick = async () => {
+  const on = (id, ev, fn) => { const el = $$(id); if (el) el[ev] = fn; };
+  const re = () => { K.msg = ''; K.limit = 100; drawKapt(); };
+  on('#kp-file', 'onchange', (e) => { const f = e.target.files[0]; e.target.value = ''; if (f) kaptFile(f); });
+  on('#kp-sf', 'onchange', (e) => { K.sidoF = e.target.value; K.sgg = ''; re(); });
+  on('#kp-sgg', 'onchange', (e) => { K.sgg = e.target.value; re(); });
+  on('#kp-q', 'onchange', (e) => { K.q = e.target.value; re(); });
+  on('#kp-minhh', 'onchange', (e) => { K.minHh = parseInt(digits(e.target.value), 10) || 0; try { localStorage.setItem('maha_kapt_minhh', K.minHh); } catch (x) {} re(); });
+  on('#kp-hastel', 'onchange', (e) => { K.hasTel = e.target.checked; if (K.hasTel) K.noTel = false; re(); });
+  on('#kp-notel', 'onchange', (e) => { K.noTel = e.target.checked; if (K.noTel) K.hasTel = false; re(); });
+  on('#kp-notreg', 'onchange', (e) => { K.notReg = e.target.checked; re(); });
+  on('#kp-clear', 'onclick', () => { Object.assign(K, { q: '', sidoF: 'all', sgg: '', minHh: 0, hasTel: false, noTel: false, notReg: false }); try { localStorage.setItem('maha_kapt_minhh', 0); } catch (x) {} re(); });
+  on('#kp-more', 'onclick', () => { K.limit += 300; drawKapt(); });
+  on('#kp-go', 'onclick', () => kaptRun('kapt'));
+  on('#kp-kakao', 'onclick', () => kaptRun('kakao'));
+  on('#kp-stop', 'onclick', () => { K.stop = true; K.msg = '멈추는 중…'; kaptPaint(); });
+  on('#kp-check', 'onclick', async () => {
     K.msg = '공공데이터 연결을 점검하는 중…'; kaptPaint();
     try {
       const r = await api('/api/kapt', { action: 'check' });
@@ -620,16 +637,13 @@ async function drawKapt() {
       K.msg = `${line('① 단지 목록제공 서비스', r.list)}\n${line('② 기본 정보제공 서비스(전화·팩스)', r.info)}`;
     } catch (e) { K.msg = e.message; }
     drawKapt();
-  };
-  if ($$('#kp-stop')) $$('#kp-stop').onclick = () => { K.stop = true; K.msg = '멈추는 중…'; kaptPaint(); };
-  if ($$('#kp-reset')) $$('#kp-reset').onclick = () => { if (!confirm('지금까지 받은 아파트 명단을 지우고 처음부터 다시 받을까요?')) return; kaptReset(); };
-  $$('#kp-sf').onchange = (e) => { K.sidoF = e.target.value; drawKapt(); };
-  $$('#kp-q').onchange = (e) => { K.q = e.target.value; drawKapt(); };
-  $$('#kp-hastel').onchange = (e) => { K.hasTel = e.target.checked; drawKapt(); };
-  $$('#kp-xlsx').onclick = async () => { $$('#kp-xlsx').disabled = true; try { await kaptExcel(list); } catch (e) { K.msg = e.message; kaptPaint(); } $$('#kp-xlsx').disabled = false; };
-  $$('#kp-imp').onclick = () => kaptImport(list);
+  });
+  on('#kp-unhide', 'onclick', () => { let n = 0; Object.values(db.list).forEach((a) => { if (a.hidden) { delete a.hidden; n++; } }); kaptSave(); K.msg = `${n.toLocaleString()}곳을 되살렸습니다.`; drawKapt(); });
+  on('#kp-reset', 'onclick', () => { if (!confirm('아파트 명단 전체를 지울까요?\n(서버에서도 지워져 모든 PC에서 비게 됩니다. 고객사 리스트는 그대로입니다)')) return; kaptReset(); });
+  on('#kp-xlsx', 'onclick', async () => { $$('#kp-xlsx').disabled = true; try { await kaptExcel(list); } catch (e) { K.msg = e.message; kaptPaint(); } if ($$('#kp-xlsx')) $$('#kp-xlsx').disabled = false; });
+  on('#kp-imp', 'onclick', () => kaptImport(list));
+  on('#kp-add', 'onclick', () => kEdit(null));
   root.querySelectorAll('[data-kinfo]').forEach((tr) => { tr.onclick = (e) => { if (e.target.closest('a')) return; kEdit(tr.dataset.kinfo); }; });
-  if ($$('#kp-add')) $$('#kp-add').onclick = () => kEdit(null);
 }
 
 async function load() {

@@ -236,6 +236,27 @@
   #case-body td[colspan]{grid-column:1/-1}
 }
 .fd-list{display:flex;flex-direction:column;gap:10px;margin-top:8px}
+/* 건물 목록 수집 — 아파트 명단 */
+.kp-sum{display:grid;grid-template-columns:repeat(3,auto) 1fr;gap:10px;align-items:stretch;margin-bottom:12px}
+.kp-sum > div{border:1px solid var(--line);border-radius:12px;background:#fff;padding:12px 16px;display:flex;flex-direction:column;gap:2px;min-width:110px}
+.kp-sum b{font-size:22px;color:var(--navy,#0b2340)}
+.kp-sum span{font-size:13px;color:var(--muted)}
+.kp-sum .kp-file{align-items:flex-end;justify-content:center;gap:6px;border:0;background:none;padding:0}
+.kp-filter{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:0 0 8px}
+.kp-filter select{width:auto}
+.kp-filter #kp-q{flex:1;min-width:200px}
+.kp-hh{display:flex;align-items:center;gap:6px;white-space:nowrap;font-size:14px}
+.kp-hh input{width:80px}
+.kp-chk{gap:14px}
+.kp-bar{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin:12px 0 8px;padding-top:12px;border-top:1px solid var(--line)}
+.kp-count{font-size:15px}.kp-count b{font-size:20px}
+.kp-tbl{max-height:560px;overflow:auto}
+.kp-tbl tbody tr{cursor:pointer}
+.kp-tbl tbody tr:hover{background:#f3f7fb}
+.kp-more{margin-top:12px;border:1px solid var(--line);border-radius:12px;background:#fff;padding:0 16px}
+.kp-more > summary{cursor:pointer;padding:12px 0;font-weight:700}
+.kp-more[open]{padding-bottom:14px}
+@media (max-width:700px){.kp-sum{grid-template-columns:1fr 1fr 1fr}.kp-sum .kp-file{grid-column:1/-1;align-items:flex-start}.kp-sum b{font-size:18px}}
 .fd-item{border:1px solid var(--line);border-radius:12px;padding:12px 14px;background:#fff;display:flex;flex-direction:column;gap:3px;font-size:14.5px}
 .fd-h b{font-size:16px}
 .fd-kapt{background:var(--tone-a);border-radius:8px;padding:6px 10px;margin-top:4px}
