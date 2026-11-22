@@ -3,9 +3,10 @@
  *  찾기(시·도 · 시군구 · 검색어 · 면수 · 공영/민영 · 노상/노외/부설) → 고치기 · 삭제 · 직접 추가 → 엑셀 저장 · 고객사 리스트에 넣기
  *  이 PC(IndexedDB)는 빨리 열기 위한 복사본이고, 진짜 명단은 서버 표 parking_lot 에 있습니다 (어느 PC에서든 같은 명단).
  */
+import { mselHtml, mselBind } from './msel.js';
 export function makePark(ctx) {
   const { sb, body, D, digits, tel, nowIso, loadXlsxLib, isOpen, redrawTabs } = ctx;
-  const P = { db: null, loading: null, msg: '', q: '', sido: '', sgg: '', min: 0, kind: '', type: '', hasTel: false, notReg: false, limit: 100 };
+  const P = { db: null, loading: null, msg: '', q: '', sidos: [], sggs: [], min: 0, kind: '', type: '', hasTel: false, notReg: false, limit: 100 };
   const S = { sent: {}, ver: {}, at: '', off: false, busy: false, again: false, timer: 0, note: '' };
   const DBKEY = 'maha_park_v1', SENTKEY = 'maha_park_sent_v1';
   const KO = new Intl.Collator('ko');
@@ -156,7 +157,7 @@ export function makePark(ctx) {
   const all = () => Object.values(P.db.list).filter((a) => !a.hidden).map(merged);
   function filtered() {
     const qq = P.q.replace(/\s/g, ''), reg = new Set(D.sites.map((x) => nmKey(x.name)));
-    return all().filter((x) => (!P.sido || x.sido === P.sido) && (!P.sgg || x.sgg === P.sgg) && (!P.kind || x.kind === P.kind) && (!P.type || x.type === P.type)
+    return all().filter((x) => (!P.sidos.length || P.sidos.includes(x.sido)) && (!P.sggs.length || P.sggs.includes(x.sido + '|' + x.sgg)) && (!P.kind || x.kind === P.kind) && (!P.type || x.type === P.type)
         && (!P.min || (x.spaces || 0) >= P.min) && (!P.hasTel || x.tel) && (!P.notReg || !reg.has(nmKey(x.name)))
         && (!qq || [x.name, x.doro, x.jibun, x.mgr, x.memo].join(' ').replace(/\s/g, '').includes(qq)))
       .sort((a, b) => KO.compare(a.sido + a.sgg + a.name, b.sido + b.sgg + b.name));
@@ -246,7 +247,8 @@ export function makePark(ctx) {
     const reg = new Set(D.sites.map((x) => nmKey(x.name)));
     const cnt = (f) => every.filter(f).length;
     const sidos = [...new Set(every.map((x) => x.sido))].sort((a, b) => KO.compare(a, b));
-    const sggs = P.sido ? [...new Set(every.filter((x) => x.sido === P.sido).map((x) => x.sgg).filter(Boolean))].sort((a, b) => KO.compare(a, b)) : [];
+    const sggs = !P.sidos.length ? [] : [...new Set(every.filter((x) => x.sgg && P.sidos.includes(x.sido)).map((x) => x.sido + '|' + x.sgg))]
+      .sort((a, b) => KO.compare(a, b)).map((k) => { const [d, g] = k.split('|'); return [k, P.sidos.length > 1 ? `${d} ${g}` : g]; });
     const hidden = Object.values(db.list).filter((a) => a.hidden).length;
     const fileBtn = (label, cls) => `<label class="btn ${cls}" style="cursor:pointer">${label}<input type="file" id="pk-file" accept=".csv,.xls,.xlsx" style="display:none"></label>`;
     const how = '<a href="https://www.data.go.kr/data/15012896/standard.do" target="_blank" rel="noopener"><b>data.go.kr → 전국주차장정보표준데이터</b></a>에서 csv 또는 xls 파일을 내려받아 올립니다. (전국 공영·민영 주차장 약 1만 9천 곳 · 관리기관 전화 포함 · 매월 갱신)';
@@ -261,8 +263,8 @@ export function makePark(ctx) {
       <p id="pk-msg" role="status" style="margin:8px 0;font-weight:700;white-space:pre-wrap;${P.msg ? '' : 'display:none'}">${esc(P.msg)}</p>
       ${started ? `
       <div class="kp-filter">
-        <select id="pk-sido"><option value="">전국</option>${sidos.map((s) => `<option${P.sido === s ? ' selected' : ''}>${esc(s)}</option>`).join('')}</select>
-        <select id="pk-sgg"${sggs.length ? '' : ' disabled'}><option value="">시·군·구 전체</option>${sggs.map((g) => `<option${P.sgg === g ? ' selected' : ''}>${esc(g)}</option>`).join('')}</select>
+        ${mselHtml({ id: 'pk-sido', all: '전국', options: sidos.map((d) => [d, d]), selected: P.sidos })}
+        ${mselHtml({ id: 'pk-sgg', all: '시·군·구 전체', placeholder: '시·군·구 (시·도를 먼저)', options: sggs, selected: P.sggs })}
         <input id="pk-q" type="search" placeholder="주차장명 · 주소 · 관리기관 · 메모" value="${esc(P.q)}">
         <label class="kp-hh">면수 <input id="pk-min" inputmode="numeric" value="${P.min || ''}" placeholder="0"> 이상</label>
       </div>
@@ -271,7 +273,7 @@ export function makePark(ctx) {
         <select id="pk-type"><option value="">노상 · 노외 · 부설</option>${['노외', '노상', '부설'].map((k) => `<option${P.type === k ? ' selected' : ''}>${k}</option>`).join('')}</select>
         <label class="sl-chk"><input type="checkbox" id="pk-tel"${P.hasTel ? ' checked' : ''}> 전화 있는 곳만</label>
         <label class="sl-chk"><input type="checkbox" id="pk-notreg"${P.notReg ? ' checked' : ''}> 고객사 리스트에 없는 곳만</label>
-        ${P.q || P.sido || P.min || P.kind || P.type || P.hasTel || P.notReg ? '<button class="btn btn-line btn-sm" type="button" id="pk-clear">조건 지우기</button>' : ''}
+        ${P.q || P.sidos.length || P.min || P.kind || P.type || P.hasTel || P.notReg ? '<button class="btn btn-line btn-sm" type="button" id="pk-clear">조건 지우기</button>' : ''}
       </div>
       <div class="kp-bar"><span class="kp-count"><b>${list.length.toLocaleString()}</b>곳</span>
         <div class="btns"><button class="btn btn-primary btn-sm" type="button" id="pk-xlsx"${list.length ? '' : ' disabled'}>⬇ 엑셀 저장</button><button class="btn btn-line btn-sm" type="button" id="pk-imp"${list.length ? '' : ' disabled'}>＋ 고객사 리스트에 넣기</button><button class="btn btn-line btn-sm" type="button" id="pk-add">＋ 주차장 직접 추가</button></div></div>
@@ -289,15 +291,15 @@ export function makePark(ctx) {
     const $ = (s) => body().querySelector(s), on = (s, ev, fn) => { const el = $(s); if (el) el[ev] = fn; };
     const re = () => { P.msg = ''; P.limit = 100; draw(); };
     on('#pk-file', 'onchange', (e) => { const f = e.target.files[0]; e.target.value = ''; if (f) readFile(f); });
-    on('#pk-sido', 'onchange', (e) => { P.sido = e.target.value; P.sgg = ''; re(); });
-    on('#pk-sgg', 'onchange', (e) => { P.sgg = e.target.value; re(); });
+    mselBind(body(), 'pk-sido', (v) => { P.sidos = v; P.sggs = P.sggs.filter((k) => v.includes(k.split('|')[0])); re(); });
+    mselBind(body(), 'pk-sgg', (v) => { P.sggs = v; re(); });
     on('#pk-q', 'onchange', (e) => { P.q = e.target.value; re(); });
     on('#pk-min', 'onchange', (e) => { P.min = parseInt(digits(e.target.value), 10) || 0; re(); });
     on('#pk-kind', 'onchange', (e) => { P.kind = e.target.value; re(); });
     on('#pk-type', 'onchange', (e) => { P.type = e.target.value; re(); });
     on('#pk-tel', 'onchange', (e) => { P.hasTel = e.target.checked; re(); });
     on('#pk-notreg', 'onchange', (e) => { P.notReg = e.target.checked; re(); });
-    on('#pk-clear', 'onclick', () => { Object.assign(P, { q: '', sido: '', sgg: '', min: 0, kind: '', type: '', hasTel: false, notReg: false }); re(); });
+    on('#pk-clear', 'onclick', () => { Object.assign(P, { q: '', sidos: [], sggs: [], min: 0, kind: '', type: '', hasTel: false, notReg: false }); re(); });
     on('#pk-more', 'onclick', () => { P.limit += 300; draw(); });
     on('#pk-xlsx', 'onclick', async () => { try { await excel(list); } catch (e) { P.msg = e.message; paint(); } });
     on('#pk-imp', 'onclick', () => toSites(list));

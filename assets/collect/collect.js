@@ -5,6 +5,7 @@
  *  모은 곳은 엑셀로 저장하거나 고객사 리스트(sites)에 "영업 대상"으로 넣습니다.
  */
 import { makePark } from './parking.js';
+import { mselHtml, mselBind } from './msel.js';
 const sb = supabase.createClient(MAHA.SB_URL, MAHA.SB_KEY);
 const root = document.getElementById('collect-root');
 const D = { sites: [], loaded: false };
@@ -81,7 +82,7 @@ function kFixNums(db) {
   return fixed > 0;
 }
 
-const K = { run: false, stop: false, msg: '', sidoF: 'all', sgg: '', q: '', db: null, limit: 100 };
+const K = { run: false, stop: false, msg: '', sidos: [], sggs: [], q: '', db: null, limit: 100 };   // sidos: 시·도 코드들, sggs: '코드|시군구'들 (비면 전체)
 /* 전국 2만 곳은 localStorage(5MB)에 다 안 들어가서 IndexedDB에 저장합니다. */
 const kIdb = () => new Promise((ok, no) => { const r = indexedDB.open('maha_kapt', 1); r.onupgradeneeded = () => r.result.createObjectStore('kv'); r.onsuccess = () => ok(r.result); r.onerror = () => no(r.error); });
 async function kIdbGet(k) { const d = await kIdb(); return new Promise((ok) => { const t = d.transaction('kv').objectStore('kv').get(k); t.onsuccess = () => ok(t.result); t.onerror = () => ok(null); }); }
@@ -248,7 +249,7 @@ const nmKey = (s) => String(s || '').replace(/\s|\(.*?\)/g, '');
 function kaptFiltered() {
   const qq = K.q.replace(/\s/g, '');
   const reg = new Set(D.sites.map((x) => nmKey(x.name)));
-  return kaptRows().filter((x) => (K.sidoF === 'all' || x.sc === K.sidoF) && (!K.sgg || x.sigungu === K.sgg)
+  return kaptRows().filter((x) => (!K.sidos.length || K.sidos.includes(x.sc)) && (!K.sggs.length || K.sggs.includes(x.sc + '|' + x.sigungu))
       && (!K.hasTel || x.tel) && (!K.noTel || !x.tel) && (!K.notReg || !reg.has(nmKey(x.name)))
       && (!K.minHh || (x.households || 0) >= K.minHh)
       && (!qq || [x.name, x.sido, x.sigungu, x.dong, x.doro, x.addr, x.mcomp, x.memo].join(' ').replace(/\s/g, '').includes(qq)))
@@ -522,7 +523,7 @@ async function kaptReset() {
 }
 /* 단지 고치기 · 삭제 · 직접 추가 (서버에 바로 저장) */
 function kEdit(code) {
-  const db = K.db, a = code ? db.list[code] : null, x = a ? kMerge(a, db.info[code]) : { name: '', sc: K.sidoF !== 'all' ? K.sidoF : '41' };
+  const db = K.db, a = code ? db.list[code] : null, x = a ? kMerge(a, db.info[code]) : { name: '', sc: K.sidos.length === 1 ? K.sidos[0] : '41' };
   const raw = (a && x.raw) || {};
   const keys = Object.keys(raw).sort((p, q2) => (Object.keys(KAPT_LABELS).indexOf(p) + 1 || 999) - (Object.keys(KAPT_LABELS).indexOf(q2) + 1 || 999));
   modal(`<h3>${a ? esc(x.name) : '＋ 단지 직접 추가'}</h3>
@@ -575,7 +576,9 @@ async function drawKapt() {
   const list = started ? kaptFiltered() : [];
   K.limit = K.limit || 100;
   const show = list.slice(0, K.limit), noTel = list.filter((x) => !x.tel && !x.manual).length;
-  const sggs = K.sidoF === 'all' ? [] : [...new Set(Object.values(db.list).filter((a) => !a.hidden && a.sc === K.sidoF).map((a) => a.sigungu).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'ko'));
+  const SN = Object.fromEntries(KAPT_SIDO);
+  const sggs = !K.sidos.length ? [] : [...new Set(Object.values(db.list).filter((a) => !a.hidden && a.sigungu && K.sidos.includes(a.sc)).map((a) => a.sc + '|' + a.sigungu))]
+    .sort((a, b) => KO.compare(a, b)).map((k) => { const [c, g] = k.split('|'); return [k, K.sidos.length > 1 ? `${SN[c]} ${g}` : g]; });
   const fileBtn = (label, cls) => `<label class="btn ${cls}" style="cursor:pointer">${label}<input type="file" id="kp-file" accept=".xlsx,.xls,.csv" style="display:none"${K.run ? ' disabled' : ''}></label>`;
   const how = `<a href="https://www.data.go.kr/data/15073271/fileData.do" target="_blank" rel="noopener"><b>data.go.kr → 국토교통부_공동주택 단지 기본 정보</b></a>에서 엑셀 파일을 내려받아 올립니다. (전국 약 2만 2천 곳 · 관리사무소 전화·팩스 포함 · 매주 갱신)`;
   const reg = new Set(D.sites.map((x) => nmKey(x.name)));
@@ -596,8 +599,8 @@ async function drawKapt() {
     <p id="kp-msg" role="status" style="margin:8px 0;font-weight:700;white-space:pre-wrap;word-break:break-all;${K.msg ? '' : 'display:none'}">${esc(kStatus())}</p>
     ${started ? `
     <div class="kp-filter">
-      <select id="kp-sf"><option value="all">전국</option>${KAPT_SIDO.map(([c, n]) => `<option value="${c}"${K.sidoF === c ? ' selected' : ''}>${n}</option>`).join('')}</select>
-      <select id="kp-sgg"${sggs.length ? '' : ' disabled'}><option value="">${sggs.length ? '시·군·구 전체' : '시·군·구'}</option>${sggs.map((g) => `<option${K.sgg === g ? ' selected' : ''}>${esc(g)}</option>`).join('')}</select>
+      ${mselHtml({ id: 'kp-sf', all: '전국', options: KAPT_SIDO, selected: K.sidos })}
+      ${mselHtml({ id: 'kp-sgg', all: '시·군·구 전체', placeholder: '시·군·구 (시·도를 먼저)', options: sggs, selected: K.sggs })}
       <input id="kp-q" type="search" placeholder="단지명 · 동 · 도로명 · 관리업체 · 메모" value="${esc(K.q)}">
       <label class="kp-hh">세대수 <input id="kp-minhh" inputmode="numeric" value="${K.minHh || ''}" placeholder="0"> 이상</label>
     </div>
@@ -605,7 +608,7 @@ async function drawKapt() {
       <label class="sl-chk"><input type="checkbox" id="kp-hastel"${K.hasTel ? ' checked' : ''}> 전화 있는 곳만</label>
       <label class="sl-chk"><input type="checkbox" id="kp-notel"${K.noTel ? ' checked' : ''}> 전화 없는 곳만</label>
       <label class="sl-chk"><input type="checkbox" id="kp-notreg"${K.notReg ? ' checked' : ''}> 고객사 리스트에 없는 곳만</label>
-      ${K.q || K.sidoF !== 'all' || K.minHh || K.hasTel || K.noTel || K.notReg ? '<button class="btn btn-line btn-sm" type="button" id="kp-clear">조건 지우기</button>' : ''}
+      ${K.q || K.sidos.length || K.minHh || K.hasTel || K.noTel || K.notReg ? '<button class="btn btn-line btn-sm" type="button" id="kp-clear">조건 지우기</button>' : ''}
     </div>
     <div class="kp-bar">
       <span class="kp-count"><b>${list.length.toLocaleString()}</b>곳</span>
@@ -634,14 +637,14 @@ async function drawKapt() {
   const on = (id, ev, fn) => { const el = $$(id); if (el) el[ev] = fn; };
   const re = () => { K.msg = ''; K.limit = 100; drawKapt(); };
   on('#kp-file', 'onchange', (e) => { const f = e.target.files[0]; e.target.value = ''; if (f) kaptFile(f); });
-  on('#kp-sf', 'onchange', (e) => { K.sidoF = e.target.value; K.sgg = ''; re(); });
-  on('#kp-sgg', 'onchange', (e) => { K.sgg = e.target.value; re(); });
+  mselBind(root, 'kp-sf', (v) => { K.sidos = v; K.sggs = K.sggs.filter((k) => v.includes(k.split('|')[0])); re(); });
+  mselBind(root, 'kp-sgg', (v) => { K.sggs = v; re(); });
   on('#kp-q', 'onchange', (e) => { K.q = e.target.value; re(); });
   on('#kp-minhh', 'onchange', (e) => { K.minHh = parseInt(digits(e.target.value), 10) || 0; try { localStorage.setItem('maha_kapt_minhh', K.minHh); } catch (x) {} re(); });
   on('#kp-hastel', 'onchange', (e) => { K.hasTel = e.target.checked; if (K.hasTel) K.noTel = false; re(); });
   on('#kp-notel', 'onchange', (e) => { K.noTel = e.target.checked; if (K.noTel) K.hasTel = false; re(); });
   on('#kp-notreg', 'onchange', (e) => { K.notReg = e.target.checked; re(); });
-  on('#kp-clear', 'onclick', () => { Object.assign(K, { q: '', sidoF: 'all', sgg: '', minHh: 0, hasTel: false, noTel: false, notReg: false }); try { localStorage.setItem('maha_kapt_minhh', 0); } catch (x) {} re(); });
+  on('#kp-clear', 'onclick', () => { Object.assign(K, { q: '', sidos: [], sggs: [], minHh: 0, hasTel: false, noTel: false, notReg: false }); try { localStorage.setItem('maha_kapt_minhh', 0); } catch (x) {} re(); });
   on('#kp-more', 'onclick', () => { K.limit += 300; drawKapt(); });
   on('#kp-go', 'onclick', () => kaptRun('kapt'));
   on('#kp-kakao', 'onclick', () => kaptRun('kakao'));
