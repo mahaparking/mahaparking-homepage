@@ -39,5 +39,19 @@
     "api/calendar.js": {
       "maxDuration": 30
     }
-  }
+  },
+  "rewrites": [
+    {
+      "source": "/sitemap.xml",
+      "destination": "/api/sitemap"
+    },
+    {
+      "source": "/cases",
+      "destination": "/api/case"
+    },
+    {
+      "source": "/cases/:slug",
+      "destination": "/api/case?slug=:slug"
+    }
+  ]
 }

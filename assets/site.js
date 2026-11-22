@@ -56,7 +56,12 @@
     }, 30);
     else window.scrollTo(0, 0);
   }
-  function route() { show((location.hash || '#home').slice(1)); }
+  function route() {
+    var h = (location.hash || '#home').slice(1);
+    if (h === 'consult') return show('home', 'consult-form');   // 다른 페이지에서 /#consult 로 들어올 때
+    if (h === 'upcycle') return show('home', 'upcycle');
+    show(h);
+  }
   document.addEventListener('click', function (e) {
     var b = e.target.closest('[data-go]'); if (!b) return;
     e.preventDefault();
@@ -84,12 +89,17 @@
       .order('work_date', { ascending: false, nullsFirst: false }).order('created_at', { ascending: false })
       .then(function (r) { CASES = r.error ? [] : r.data; cb(); });
   }
+  /* 사례마다 따로 있는 주소 (api/_cases.js 의 slugOf 와 같은 규칙) */
+  function caseSlug(c) {
+    var w = String(c.title || '시공사례').replace(/[^0-9A-Za-z가-힣\s-]/g, ' ').trim().split(/[\s-]+/).filter(Boolean).slice(0, 8).join('-');
+    return '/cases/' + encodeURIComponent((w || '시공사례') + '-' + String(c.id).slice(0, 8));
+  }
   function caseCard(c, thumbs) {
     var ph = c.photos && c.photos.length
       ? '<img src="' + photoUrl(c.photos[0]) + '" alt="' + esc(c.title) + ' 현장 사진" loading="lazy">' + (c.photos.length > 1 ? '<span class="count">사진 ' + c.photos.length + '장</span>' : '')
       : '현장 사진 준비 중';
     var th = thumbs && c.photos && c.photos.length > 1 ? '<div class="case-thumbs">' + c.photos.map(function (p, i) { return '<img src="' + photoUrl(p) + '" alt="사진 ' + (i + 1) + '" data-view="' + c.id + '" data-i="' + i + '" loading="lazy">'; }).join('') + '</div>' : '';
-    return '<article class="card case"><div class="case-photo"' + (c.photos && c.photos.length ? ' data-view="' + c.id + '" data-i="0" style="cursor:zoom-in"' : '') + '>' + ph + '</div><div class="case-body"><div class="meta">' + (c.work_type ? '<span>' + esc(c.work_type) + '</span>' : '') + (c.area ? '<span>' + esc(c.area) + '</span>' : '') + (c.work_date ? '<span class="date">' + dot(c.work_date) + '</span>' : '') + '</div><h3>' + esc(c.title) + '</h3><p>' + esc(c.description) + '</p>' + (c.result ? '<div class="result">' + esc(c.result) + '</div>' : '') + '</div>' + th + '</article>';
+    return '<article class="card case"><div class="case-photo"' + (c.photos && c.photos.length ? ' data-view="' + c.id + '" data-i="0" style="cursor:zoom-in"' : '') + '>' + ph + '</div><div class="case-body"><div class="meta">' + (c.work_type ? '<span>' + esc(c.work_type) + '</span>' : '') + (c.area ? '<span>' + esc(c.area) + '</span>' : '') + (c.work_date ? '<span class="date">' + dot(c.work_date) + '</span>' : '') + '</div><h3>' + esc(c.title) + '</h3><p>' + esc(c.description) + '</p>' + (c.result ? '<div class="result">' + esc(c.result) + '</div>' : '') + '<a class="case-more" href="' + caseSlug(c) + '">자세히 보기 →</a></div>' + th + '</article>';
   }
   function renderHomeCases() {
     var list = CASES.slice(0, 12);

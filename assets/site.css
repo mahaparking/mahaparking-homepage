@@ -459,3 +459,15 @@ main section,body > section{padding:104px 0}
 /* ===== 모든 칸 위아래 간격 통일 (2026-11-22) ===== */
 #view-home > section{padding:112px 0}
 @media (max-width:860px){#view-home > section{padding:76px 0}}
+
+/* 시공사례 페이지(/cases) 상단 메뉴: 버튼 대신 링크 */
+.menu a{display:block;color:#C5D3E0;font-size:15px;font-weight:500;padding:8px 12px;border-radius:8px;text-decoration:none;white-space:nowrap}
+.menu a:hover{color:var(--signal)}
+.menu a[aria-current="page"]{color:#fff;background:rgba(255,255,255,.1)}
+@media (max-width:860px){.menu a{padding:6px 8px;font-size:14px}}
+@media (max-width:520px){
+  .menu a{font-size:13.5px;padding:6px 9px;border-radius:999px;border:1px solid rgba(255,255,255,.14);letter-spacing:-.02em}
+  .menu a[aria-current="page"]{background:var(--signal);border-color:var(--signal);color:#1a1a1a;font-weight:700}
+}
+.mobile-bar a.photo{display:block}
+.case-more{font-size:14px;font-weight:700;color:var(--brand);text-decoration:none;align-self:flex-start}
