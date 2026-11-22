@@ -236,6 +236,29 @@
   #case-body td[colspan]{grid-column:1/-1}
 }
 .fd-list{display:flex;flex-direction:column;gap:10px;margin-top:8px}
+/* 자료실 */
+.lb-list{display:flex;flex-direction:column;gap:8px}
+.lb-item{display:flex;align-items:center;gap:12px;width:100%;text-align:left;background:#fff;border:1px solid var(--line);border-radius:12px;padding:12px 14px;cursor:pointer;font:inherit;color:inherit}
+.lb-item:hover{border-color:var(--brand);background:#f6f9fc}
+.lb-ic{font-size:24px;flex:none}
+.lb-t{display:flex;flex-direction:column;gap:2px;flex:1;min-width:0}
+.lb-t b{font-size:16px}
+.lb-x{flex:none;width:30px;height:30px;border-radius:8px;display:grid;place-items:center;color:var(--muted);font-size:18px}
+.lb-x:hover{background:#fbebeb;color:var(--stop)}
+.lb-doc{background:#fff;border:1px solid var(--line);border-radius:14px;padding:26px 30px;line-height:1.75;font-size:15.5px}
+.lb-doc h1{font-size:26px;margin:0 0 14px}
+.lb-doc h2{font-size:21px;margin:30px 0 10px;padding-bottom:6px;border-bottom:2px solid var(--brand)}
+.lb-doc h3{font-size:18px;margin:22px 0 8px}
+.lb-doc h4,.lb-doc h5{font-size:16px;margin:16px 0 6px}
+.lb-doc ul,.lb-doc ol{padding-left:22px;margin:6px 0 10px}
+.lb-doc li{margin:3px 0}
+.lb-doc blockquote{margin:12px 0;padding:8px 16px;border-left:4px solid var(--brand);background:#f3f7fb;border-radius:0 10px 10px 0}
+.lb-doc blockquote p{margin:4px 0}
+.lb-doc table{margin:8px 0 14px}
+.lb-doc code{background:#eef1f4;padding:1px 5px;border-radius:5px;font-size:13px}
+.lb-doc pre{background:#f3f5f8;padding:12px;border-radius:10px;overflow:auto}
+.lb-doc hr{border:0;border-top:1px solid var(--line);margin:26px 0}
+@media (max-width:700px){.lb-doc{padding:18px 16px;font-size:15px}.lb-doc h1{font-size:22px}}
 /* 건물 목록 수집 — 아파트 명단 */
 .kp-sum{display:grid;grid-template-columns:repeat(3,auto) 1fr;gap:10px;align-items:stretch;margin-bottom:12px}
 .kp-sum > div{border:1px solid var(--line);border-radius:12px;background:#fff;padding:12px 16px;display:flex;flex-direction:column;gap:2px;min-width:110px}
@@ -326,6 +349,12 @@
           <div class="adm-grp-h" role="button" tabindex="0" aria-expanded="false"><span>🌐 홈페이지 관리</span><i aria-hidden="true">▾</i></div>
           <div class="adm-grp-items">
             <button role="tab" data-tab="stats">방문 통계</button>
+          </div>
+        </div>
+        <div class="adm-grp">
+          <div class="adm-grp-h" role="button" tabindex="0" aria-expanded="false"><span>📚 자료실</span><i aria-hidden="true">▾</i></div>
+          <div class="adm-grp-items">
+            <button role="tab" data-tab="library">사용 설명서 · 자료</button>
           </div>
         </div>
       </nav>
@@ -452,6 +481,12 @@
       <div id="shot-root"></div>
     </div>
 
+    <!-- 자료실 (assets/library/library.js) -->
+    <div class="card panel hidden" data-panel="library">
+      <h2>자료실</h2>
+      <div id="library-root"></div>
+    </div>
+
     <!-- 방문 통계 -->
     <div class="card panel hidden" data-panel="stats">
       <h2>방문 통계</h2>
@@ -503,5 +538,6 @@
 <script type="module" src="/assets/sales/sales.js"></script>
 <script type="module" src="/assets/works/works.js"></script>
 <script type="module" src="/assets/collect/collect.js"></script>
+<script type="module" src="/assets/library/library.js"></script>
 </body>
 </html>
