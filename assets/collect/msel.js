@@ -43,7 +43,7 @@ export const SIDO17 = ['서울', '부산', '대구', '인천', '광주', '대전
 export function regionOpts(rows, picked, KO) {
   const sc = {}, gc = {};
   rows.forEach((x) => { sc[x.sido] = (sc[x.sido] || 0) + 1; if (x.sgg && picked.includes(x.sido)) { const k = x.sido + '|' + x.sgg; gc[k] = (gc[k] || 0) + 1; } });
-  const extra = Object.keys(sc).filter((d) => !SIDO17.includes(d) && /^[가-힣]{2,}$/.test(d)).sort((a, b) => KO.compare(a, b));
+  const extra = []; // 주소가 잘못 적힌 몇 곳은 '전국'으로만 보임
   const sidos = [...SIDO17, ...extra].map((d) => [d, `${d} (${(sc[d] || 0).toLocaleString()})`]);
   const sggs = Object.keys(gc).sort((a, b) => KO.compare(a, b)).map((k) => { const [d, g] = k.split('|'); return [k, `${picked.length > 1 ? `${d} ${g}` : g} (${gc[k].toLocaleString()})`]; });
   return { sidos, sggs };
