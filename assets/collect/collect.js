@@ -246,13 +246,25 @@ function kaptPaint() {
 
 const KO = new Intl.Collator('ko');
 const nmKey = (s) => String(s || '').replace(/\s|\(.*?\)/g, '');
+/* 검색어를 어디서 찾을지: 전체 · 단지명 · 주소 · 전화번호 · 관리업체 · 메모 */
+const K_QF = [['all', '전체'], ['name', '단지명'], ['addr', '주소'], ['tel', '전화번호'], ['mgr', '관리업체'], ['memo', '메모']];
+function kMatch(x, f, qq, qd) {
+  const has = (...v) => v.join(' ').replace(/\s/g, '').includes(qq);
+  const tel = () => qd.length >= 3 && [x.tel, x.fax].some((t) => digits(t).includes(qd));
+  if (f === 'name') return has(x.name);
+  if (f === 'addr') return has(x.sido, x.sigungu, x.dong, x.doro, x.addr);
+  if (f === 'tel') return tel();
+  if (f === 'mgr') return has(x.mcomp, x.mgr);
+  if (f === 'memo') return has(x.memo);
+  return has(x.name, x.sido, x.sigungu, x.dong, x.doro, x.addr, x.mcomp, x.memo) || tel();
+}
 function kaptFiltered() {
-  const qq = K.q.replace(/\s/g, '');
+  const qq = K.q.replace(/\s/g, ''), qd = digits(K.q);
   const reg = new Set(D.sites.map((x) => nmKey(x.name)));
   return kaptRows().filter((x) => (!K.sidos.length || K.sidos.includes(x.sc)) && (!K.sggs.length || K.sggs.includes(x.sc + '|' + x.sigungu))
       && (!K.hasTel || x.tel) && (!K.noTel || !x.tel) && (!K.notReg || !reg.has(nmKey(x.name)))
       && (!K.minHh || (x.households || 0) >= K.minHh)
-      && (!qq || [x.name, x.sido, x.sigungu, x.dong, x.doro, x.addr, x.mcomp, x.memo].join(' ').replace(/\s/g, '').includes(qq)))
+      && (!qq || kMatch(x, K.qf, qq, qd)))
     .sort((a, b) => KO.compare(a.sc + (a.sigungu || '') + a.name, b.sc + (b.sigungu || '') + b.name));
 }
 
@@ -601,7 +613,7 @@ async function drawKapt() {
     <div class="kp-filter">
       ${mselHtml({ id: 'kp-sf', all: '전국', options: KAPT_SIDO, selected: K.sidos })}
       ${mselHtml({ id: 'kp-sgg', all: '시·군·구 전체', placeholder: '시·군·구 (시·도를 먼저)', options: sggs, selected: K.sggs })}
-      <input id="kp-q" type="search" placeholder="단지명 · 동 · 도로명 · 관리업체 · 메모" value="${esc(K.q)}">
+      <div class="kp-search"><select id="kp-qf" aria-label="찾을 곳">${K_QF.map(([v, n]) => `<option value="${v}"${(K.qf || 'all') === v ? ' selected' : ''}>${n}</option>`).join('')}</select><input id="kp-q" type="search" placeholder="${{ all: '검색어', name: '예) 래미안', addr: '예) 평촌동, 관악대로', tel: '예) 031-123 또는 1234', mgr: '예) 우리관리', memo: '메모 내용' }[K.qf || 'all']}" value="${esc(K.q)}"></div>
       <label class="kp-hh">세대수 <input id="kp-minhh" inputmode="numeric" value="${K.minHh || ''}" placeholder="0"> 이상</label>
     </div>
     <div class="kp-filter kp-chk">
@@ -640,11 +652,12 @@ async function drawKapt() {
   mselBind(root, 'kp-sf', (v) => { K.sidos = v; K.sggs = K.sggs.filter((k) => v.includes(k.split('|')[0])); re(); });
   mselBind(root, 'kp-sgg', (v) => { K.sggs = v; re(); });
   on('#kp-q', 'onchange', (e) => { K.q = e.target.value; re(); });
+  on('#kp-qf', 'onchange', (e) => { K.qf = e.target.value; if (K.q) re(); else drawKapt(); });
   on('#kp-minhh', 'onchange', (e) => { K.minHh = parseInt(digits(e.target.value), 10) || 0; try { localStorage.setItem('maha_kapt_minhh', K.minHh); } catch (x) {} re(); });
   on('#kp-hastel', 'onchange', (e) => { K.hasTel = e.target.checked; if (K.hasTel) K.noTel = false; re(); });
   on('#kp-notel', 'onchange', (e) => { K.noTel = e.target.checked; if (K.noTel) K.hasTel = false; re(); });
   on('#kp-notreg', 'onchange', (e) => { K.notReg = e.target.checked; re(); });
-  on('#kp-clear', 'onclick', () => { Object.assign(K, { q: '', sidos: [], sggs: [], minHh: 0, hasTel: false, noTel: false, notReg: false }); try { localStorage.setItem('maha_kapt_minhh', 0); } catch (x) {} re(); });
+  on('#kp-clear', 'onclick', () => { Object.assign(K, { q: '', qf: 'all', sidos: [], sggs: [], minHh: 0, hasTel: false, noTel: false, notReg: false }); try { localStorage.setItem('maha_kapt_minhh', 0); } catch (x) {} re(); });
   on('#kp-more', 'onclick', () => { K.limit += 300; drawKapt(); });
   on('#kp-go', 'onclick', () => kaptRun('kapt'));
   on('#kp-kakao', 'onclick', () => kaptRun('kakao'));

@@ -155,11 +155,22 @@ export function makePark(ctx) {
   /* ---------- 찾기 ---------- */
   const merged = (a) => { const my = a.my || {}; return Object.assign({}, a, { tel: my.tel !== undefined ? my.tel : a.tel, memo: my.memo || '' }); };
   const all = () => Object.values(P.db.list).filter((a) => !a.hidden).map(merged);
+  const QF = [['all', '전체'], ['name', '주차장명'], ['addr', '주소'], ['tel', '전화번호'], ['mgr', '관리기관'], ['memo', '메모']];
+  function match(x, f, qq, qd) {
+    const has = (...v) => v.join(' ').replace(/\s/g, '').includes(qq);
+    const tl = () => qd.length >= 3 && digits(x.tel).includes(qd);
+    if (f === 'name') return has(x.name);
+    if (f === 'addr') return has(x.sido, x.sgg, x.doro, x.jibun);
+    if (f === 'tel') return tl();
+    if (f === 'mgr') return has(x.mgr);
+    if (f === 'memo') return has(x.memo);
+    return has(x.name, x.doro, x.jibun, x.mgr, x.memo) || tl();
+  }
   function filtered() {
-    const qq = P.q.replace(/\s/g, ''), reg = new Set(D.sites.map((x) => nmKey(x.name)));
+    const qq = P.q.replace(/\s/g, ''), qd = digits(P.q), reg = new Set(D.sites.map((x) => nmKey(x.name)));
     return all().filter((x) => (!P.sidos.length || P.sidos.includes(x.sido)) && (!P.sggs.length || P.sggs.includes(x.sido + '|' + x.sgg)) && (!P.kind || x.kind === P.kind) && (!P.type || x.type === P.type)
         && (!P.min || (x.spaces || 0) >= P.min) && (!P.hasTel || x.tel) && (!P.notReg || !reg.has(nmKey(x.name)))
-        && (!qq || [x.name, x.doro, x.jibun, x.mgr, x.memo].join(' ').replace(/\s/g, '').includes(qq)))
+        && (!qq || match(x, P.qf, qq, qd)))
       .sort((a, b) => KO.compare(a.sido + a.sgg + a.name, b.sido + b.sgg + b.name));
   }
 
@@ -265,7 +276,7 @@ export function makePark(ctx) {
       <div class="kp-filter">
         ${mselHtml({ id: 'pk-sido', all: '전국', options: sidos.map((d) => [d, d]), selected: P.sidos })}
         ${mselHtml({ id: 'pk-sgg', all: '시·군·구 전체', placeholder: '시·군·구 (시·도를 먼저)', options: sggs, selected: P.sggs })}
-        <input id="pk-q" type="search" placeholder="주차장명 · 주소 · 관리기관 · 메모" value="${esc(P.q)}">
+        <div class="kp-search"><select id="pk-qf" aria-label="찾을 곳">${QF.map(([v, n]) => `<option value="${v}"${(P.qf || 'all') === v ? ' selected' : ''}>${n}</option>`).join('')}</select><input id="pk-q" type="search" placeholder="${{ all: '검색어', name: '예) 시청 주차장', addr: '예) 동안구, 관악대로', tel: '예) 031-8045', mgr: '예) 시설관리공단', memo: '메모 내용' }[P.qf || 'all']}" value="${esc(P.q)}"></div>
         <label class="kp-hh">면수 <input id="pk-min" inputmode="numeric" value="${P.min || ''}" placeholder="0"> 이상</label>
       </div>
       <div class="kp-filter kp-chk">
@@ -294,12 +305,13 @@ export function makePark(ctx) {
     mselBind(body(), 'pk-sido', (v) => { P.sidos = v; P.sggs = P.sggs.filter((k) => v.includes(k.split('|')[0])); re(); });
     mselBind(body(), 'pk-sgg', (v) => { P.sggs = v; re(); });
     on('#pk-q', 'onchange', (e) => { P.q = e.target.value; re(); });
+    on('#pk-qf', 'onchange', (e) => { P.qf = e.target.value; if (P.q) re(); else draw(); });
     on('#pk-min', 'onchange', (e) => { P.min = parseInt(digits(e.target.value), 10) || 0; re(); });
     on('#pk-kind', 'onchange', (e) => { P.kind = e.target.value; re(); });
     on('#pk-type', 'onchange', (e) => { P.type = e.target.value; re(); });
     on('#pk-tel', 'onchange', (e) => { P.hasTel = e.target.checked; re(); });
     on('#pk-notreg', 'onchange', (e) => { P.notReg = e.target.checked; re(); });
-    on('#pk-clear', 'onclick', () => { Object.assign(P, { q: '', sidos: [], sggs: [], min: 0, kind: '', type: '', hasTel: false, notReg: false }); re(); });
+    on('#pk-clear', 'onclick', () => { Object.assign(P, { q: '', qf: 'all', sidos: [], sggs: [], min: 0, kind: '', type: '', hasTel: false, notReg: false }); re(); });
     on('#pk-more', 'onclick', () => { P.limit += 300; draw(); });
     on('#pk-xlsx', 'onclick', async () => { try { await excel(list); } catch (e) { P.msg = e.message; paint(); } });
     on('#pk-imp', 'onclick', () => toSites(list));
