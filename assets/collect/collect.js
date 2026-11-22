@@ -332,7 +332,7 @@ async function kaptRun(mode) {
       kaptSave();
       if (quota && !K.stop) { K.msg = '공공데이터 오늘 횟수를 다 써서, 카카오 지도로 이어서 찾습니다…'; kaptPaint(); mode = 'kakao'; }
     }
-    if (mode === 'kakao' && !K.stop) await kakaoFill(order(Object.values(db.list).filter((a) => want(a) && !(db.info[a.code] && db.info[a.code].tel))));
+    if (mode === 'kakao' && !K.stop) await kakaoFill(order(Object.values(db.list).filter((a) => { const i = db.info[a.code] || {}; return want(a) && (!i.tel || !(i.doro || i.addr || a.doro || a.addr)); })));
     kaptSave();
     const ct = kaptCount();
     if (!ct.total && K.trace) { K.msg = '공공데이터에서 단지 목록이 0곳으로 왔습니다. 아래 응답 내용을 클로드에게 보여 주세요.\n' + K.trace.join('\n'); }
@@ -357,8 +357,13 @@ async function kakaoFill(codes) {
         const hit = r.list.find((p) => p.phone && (nm(p.name).includes(key) || key.includes(nm(p.name))) && /관리사무소|아파트/.test(p.name + p.category))
           || r.list.find((p) => p.phone && nm(p.name).includes(key));
         const prev = db.info[a.code] || { code: a.code, ok: true };
-        if (hit) { found++; db.info[a.code] = Object.assign({}, prev, { tel: hit.phone, src: prev.src || 'kakao', raw: Object.assign({}, prev.raw || {}, { '전화 출처': `카카오 지도 (${hit.name})` }) }); }
-        else db.info[a.code] = Object.assign({}, prev, { raw: Object.assign({}, prev.raw || {}, { '전화 출처': '카카오 지도에서 못 찾음' }) });
+        // 주소는 전화번호가 없는 장소(아파트 자체)에서도 가져옵니다.
+        const place = hit || r.list.find((p) => (nm(p.name).includes(key) || key.includes(nm(p.name))) && /아파트|주거|관리사무소/.test(p.name + p.category));
+        const addrFix = !(prev.doro || prev.addr || a.doro || a.addr) && place ? { doro: place.address || '', addr: place.jibun || '', raw: Object.assign({}, prev.raw || {}, { '주소 출처': `카카오 지도 (${place.name})` }) } : {};
+        const base = Object.assign({}, prev, addrFix, { raw: Object.assign({}, prev.raw || {}, addrFix.raw || {}) });
+        if (prev.tel) db.info[a.code] = base;
+        else if (hit) { found++; db.info[a.code] = Object.assign(base, { tel: hit.phone, src: prev.src || 'kakao', raw: Object.assign(base.raw, { '전화 출처': `카카오 지도 (${hit.name})` }) }); }
+        else db.info[a.code] = Object.assign(base, { raw: Object.assign(base.raw, { '전화 출처': '카카오 지도에서 못 찾음' }) });
       } catch (e) { if (e.setup || /카카오/.test(e.message)) { stopErr = e.message; return; } }
       done++;
       if (done % 40 === 0) kaptSave();
