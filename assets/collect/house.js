@@ -157,7 +157,7 @@ export function makeHouse(ctx) {
   }
   async function fetchSggs(codes) {
     await bjd(); await load();
-    P.busy = true; P.stop = false; P.msg = '받기 시작합니다…'; draw();
+    P.busy = true; P.fetching = true; P.stop = false; P.msg = '받기 시작합니다…'; draw();
     const today = new Date().toISOString().slice(0, 10);
     let calls = 0, found = 0, err = '';
     try {
@@ -186,11 +186,43 @@ export function makeHouse(ctx) {
         await Promise.all([worker(), worker(), worker()]);
       }
     } finally {
-      P.busy = false; await save();
+      P.busy = false; P.fetching = false; await save();
       const cnt = Object.values(P.db.list).filter((a) => !a.hidden).length;
       P.msg = err ? `멈췄습니다: ${err}` : P.stop ? '멈췄습니다. [▶ 받기]를 누르면 남은 동부터 이어서 받습니다.' : `끝났습니다. 명단 ${cnt.toLocaleString()}곳 (이번에 공공데이터 ${calls.toLocaleString()}번 불러옴).`;
       draw();
     }
+  }
+
+  /* ---------- 카카오맵에서 전화 찾기 ---------- */
+  async function kakaoOne(a) {
+    const nm = ((a.my && a.my.name) || a.name || '').trim(), keys = [jkey(a.jibun), jkey(a.doro)].filter((k) => k.length > 6);
+    if (!nm || !keys.length) return '';
+    const area = (a.sgg || '').split(' ')[0];
+    for (const q of [`${area} ${nm} 관리사무소`, `${area} ${nm}`]) {
+      const r = await api('/api/place', { q });
+      const hit = (r.list || []).filter((d) => d.phone && (keys.includes(jkey(d.jibun)) || keys.includes(jkey(d.address))))
+        .sort((p, q2) => (/관리/.test(q2.name) - /관리/.test(p.name)))[0];
+      if (hit) return hit.phone;
+    }
+    return '';
+  }
+  async function kakaoRun(list) {
+    const todo = list.map((x) => P.db.list[x.code]).filter((a) => a && !a.kt && ((a.my && a.my.name) || a.name));
+    if (!todo.length) { P.msg = '찾아볼 곳이 없습니다. (이름이 있고 전화가 없는 곳 중, 아직 찾아보지 않은 곳만 찾습니다)'; paint(); return; }
+    P.busy = true; P.stop = false; let n = 0, got = 0, err = '';
+    draw();
+    const work = async () => {
+      while (!P.stop && !err && todo.length) {
+        const a = todo.shift();
+        try { const t = await kakaoOne(a); a.kt = nowIso().slice(0, 10); if (t) { a.kk = digits(t); got++; } } catch (e) { err = e.message; break; }
+        n++; P.msg = `카카오맵에서 전화 찾는 중… ${n.toLocaleString()}곳 확인 · ${got.toLocaleString()}곳 찾음`; paint();
+        if (n % 30 === 0) save();
+      }
+    };
+    await Promise.all([work(), work(), work()]);
+    P.busy = false; save();
+    P.msg = err ? `멈췄습니다: ${err}` : `${P.stop ? '멈췄습니다' : '끝났습니다'}. ${n.toLocaleString()}곳 확인, ${got.toLocaleString()}곳 전화번호 찾음.${P.stop ? ' 다시 누르면 남은 곳부터 이어서 찾습니다.' : ''}`;
+    draw();
   }
 
   /* ---------- 찾기 ---------- */
@@ -210,7 +242,8 @@ export function makeHouse(ctx) {
   const merged = (a) => {
     const my = a.my || {}, k = my.tel ? null : ktFind(a);
     const [kind, est] = a.b && !a.manual ? kindAll(a) : [a.kind, 0];
-    return Object.assign({}, a, { kind, est, name: my.name || a.name || (k && k.name) || '', tel: my.tel || (k && k.tel) || '', telK: !!(k && !my.tel), memo: my.memo || '' });
+    const t = my.tel || (k && k.tel) || a.kk || '';
+    return Object.assign({}, a, { kind, est, name: my.name || a.name || (k && k.name) || '', tel: t, telK: my.tel ? '' : k && k.tel ? '관리사무소' : a.kk ? '카카오맵' : '', memo: my.memo || '' });
   };
   const all = () => Object.values(P.db.list).filter((a) => !a.hidden).map(merged);
   const QF = [['all', '전체'], ['name', '건물명'], ['addr', '주소'], ['tel', '전화번호'], ['memo', '메모']];
@@ -311,6 +344,7 @@ export function makeHouse(ctx) {
     if (!P.db || !BJD) { body().innerHTML = '<p class="hint">불러오는 중…</p>'; await Promise.all([load(), bjd()]); if (!isOpen()) return; }
     const db = P.db, every = all(), started = every.length > 0;
     const list = started ? filtered() : [], show = list.slice(0, P.limit);
+    const kTodo = list.filter((x) => !x.tel && !x.kt && x.name).length;
     const reg = new Set(D.sites.map((x) => nmKey(x.name)));
     const cnt = (f) => every.filter(f).length;
     // 받아 올 지역 (행정표준코드 법정동)
@@ -358,9 +392,9 @@ export function makeHouse(ctx) {
         ${P.q || P.sidos.length || P.kinds.length || P.min || P.max || P.pmin || P.mech || P.hasTel || P.noTel || P.notReg ? '<button class="btn btn-line btn-sm" type="button" id="hs-clear">조건 지우기</button>' : ''}
       </div>
       <div class="kp-bar"><span class="kp-count"><b>${list.length.toLocaleString()}</b>곳</span>
-        <div class="btns"><button class="btn btn-primary btn-sm" type="button" id="hs-xlsx"${list.length ? '' : ' disabled'}>⬇ 엑셀 저장</button><button class="btn btn-line btn-sm" type="button" id="hs-imp"${list.length ? '' : ' disabled'}>＋ 고객사 리스트에 넣기</button><button class="btn btn-line btn-sm" type="button" id="hs-add">＋ 건물 직접 추가</button></div></div>
+        <div class="btns"><button class="btn btn-primary btn-sm" type="button" id="hs-xlsx"${list.length ? '' : ' disabled'}>⬇ 엑셀 저장</button><button class="btn btn-line btn-sm" type="button" id="hs-imp"${list.length ? '' : ' disabled'}>＋ 고객사 리스트에 넣기</button><button class="btn btn-line btn-sm" type="button" id="hs-add">＋ 건물 직접 추가</button>${P.busy && !P.fetching ? '<button class="btn btn-line btn-sm" type="button" id="hs-kstop">■ 멈추기</button>' : `<button class="btn btn-line btn-sm" type="button" id="hs-kakao" title="이름·주소가 맞는 곳만 넣습니다"${kTodo && !P.busy ? '' : ' disabled'}>📞 카카오맵에서 전화 찾기${kTodo ? ` (${kTodo.toLocaleString()}곳)` : ''}</button>`}</div></div>
       <div class="tbl-wrap kp-tbl"><table><thead><tr><th>지역</th><th>건물명 · 주소 <span class="hint" style="font-weight:400">(누르면 고치기 · 삭제)</span></th><th>구분</th><th>세대</th><th>주차</th><th>층</th><th>사용승인</th></tr></thead><tbody>
-        ${show.length ? show.map((x) => `<tr data-hs="${esc(x.code)}"><td>${esc([x.sgg, x.dongName].filter(Boolean).join(' '))}</td><td><b>${esc(x.name || '(이름 없음)')}</b>${reg.has(nmKey(x.name)) && x.name ? ' <span class="status st-sent">등록됨</span>' : ''}${x.manual ? ' <span class="hint">(직접 추가)</span>' : ''}${x.tel ? ` <a href="tel:${digits(x.tel)}">☎ ${esc(tel(x.tel))}</a>${x.telK ? ' <span class="hint">(관리사무소)</span>' : ''}` : ''}${x.memo ? `<br><span class="hint" style="color:var(--brand)">📝 ${esc(x.memo)}</span>` : ''}${x.doro || x.jibun ? `<br><span class="hint">${esc(x.doro || x.jibun)}</span>` : ''}</td><td style="white-space:nowrap"><span class="hk hk-${{ 아파트: 'a', 빌라: 'v', 도시형생활주택: 'd' }[GROUP[x.kind]] || 'e'}">${esc(GROUP[x.kind] === '도시형생활주택' ? '도시형' : (GROUP[x.kind] || '기타'))}</span>${(GROUP[x.kind] === '빌라' && x.kind !== '빌라') || x.est ? `<br><span class="hint"${x.est ? ' title="건축물대장에 \'공동주택\'으로만 적혀 있어 이름·층수로 추정"' : ''}>${[GROUP[x.kind] === '빌라' && x.kind !== '빌라' ? x.kind : '', x.est ? '추정' : ''].filter(Boolean).join(' · ')}</span>` : ''}${x.dongs > 1 ? `<br><span class="hint">${x.dongs}개 동</span>` : ''}</td><td>${x.hh || ''}</td><td style="white-space:nowrap">${x.park || ''}${x.mech ? `<br><span class="hint">기계식 ${x.mech}</span>` : ''}</td><td>${x.flr || ''}</td><td style="white-space:nowrap">${esc((x.use || '').slice(0, 7))}</td></tr>`).join('') : '<tr><td colspan="7" class="hint">조건에 맞는 건물이 없습니다.</td></tr>'}
+        ${show.length ? show.map((x) => `<tr data-hs="${esc(x.code)}"><td>${esc([x.sgg, x.dongName].filter(Boolean).join(' '))}</td><td><b>${esc(x.name || '(이름 없음)')}</b>${reg.has(nmKey(x.name)) && x.name ? ' <span class="status st-sent">등록됨</span>' : ''}${x.manual ? ' <span class="hint">(직접 추가)</span>' : ''}${x.tel ? ` <a href="tel:${digits(x.tel)}">☎ ${esc(tel(x.tel))}</a>${x.telK ? ` <span class="hint">(${x.telK})</span>` : ''}` : ''}${x.memo ? `<br><span class="hint" style="color:var(--brand)">📝 ${esc(x.memo)}</span>` : ''}${x.doro || x.jibun ? `<br><span class="hint">${esc(x.doro || x.jibun)}</span>` : ''}</td><td style="white-space:nowrap"><span class="hk hk-${{ 아파트: 'a', 빌라: 'v', 도시형생활주택: 'd' }[GROUP[x.kind]] || 'e'}">${esc(GROUP[x.kind] === '도시형생활주택' ? '도시형' : (GROUP[x.kind] || '기타'))}</span>${(GROUP[x.kind] === '빌라' && x.kind !== '빌라') || x.est ? `<br><span class="hint"${x.est ? ' title="건축물대장에 \'공동주택\'으로만 적혀 있어 이름·층수로 추정"' : ''}>${[GROUP[x.kind] === '빌라' && x.kind !== '빌라' ? x.kind : '', x.est ? '추정' : ''].filter(Boolean).join(' · ')}</span>` : ''}${x.dongs > 1 ? `<br><span class="hint">${x.dongs}개 동</span>` : ''}</td><td>${x.hh || ''}</td><td style="white-space:nowrap">${x.park || ''}${x.mech ? `<br><span class="hint">기계식 ${x.mech}</span>` : ''}</td><td>${x.flr || ''}</td><td style="white-space:nowrap">${esc((x.use || '').slice(0, 7))}</td></tr>`).join('') : '<tr><td colspan="7" class="hint">조건에 맞는 건물이 없습니다.</td></tr>'}
       </tbody></table></div>
       ${list.length > show.length ? `<div class="btns" style="justify-content:center;margin-top:8px"><button class="btn btn-line btn-sm" type="button" id="hs-more">더 보기 (${show.length.toLocaleString()} / ${list.length.toLocaleString()})</button></div>` : ''}
       <details class="kp-more"><summary>⚙ 명단 관리</summary>
@@ -392,6 +426,8 @@ export function makeHouse(ctx) {
     on('#hs-xlsx', 'onclick', async () => { try { await excel(list); } catch (e) { P.msg = e.message; paint(); } });
     on('#hs-imp', 'onclick', () => toSites(list));
     on('#hs-add', 'onclick', () => edit(null));
+    on('#hs-kakao', 'onclick', () => kakaoRun(list.filter((x) => !x.tel)));
+    on('#hs-kstop', 'onclick', () => { P.stop = true; P.msg = '멈추는 중…'; paint(); });
     on('#hs-unhide', 'onclick', () => { let n = 0; Object.values(db.list).forEach((a) => { if (a.hidden) { delete a.hidden; n++; } }); save(); P.msg = `${n.toLocaleString()}곳을 되살렸습니다.`; draw(); });
     on('#hs-redo', 'onclick', () => {
       if (!P.pickSgg.length) { P.msg = '위 "📥 받아 올 지역 고르기"에서 다시 받을 시·군·구를 먼저 고르세요.'; paint(); return; }
