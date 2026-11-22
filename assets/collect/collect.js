@@ -111,7 +111,8 @@ async function kaptExcel(list) {
     await new Promise((ok, no) => { const sc = document.createElement('script'); sc.src = 'https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js'; sc.onload = ok; sc.onerror = () => no(new Error('엑셀 도구를 불러오지 못했습니다.')); document.head.appendChild(sc); });
   }
   const head = ['시·도', '시·군·구', '읍·면·동', '단지명', '관리사무소 전화', '관리사무소 팩스', '우편번호', '도로명 주소', '지번 주소', '세대수', '동수', '주차대수(합)', '관리 방식', '사용승인일', '단지코드'];
-  const shown = new Set(['kaptCode', 'kaptName', 'kaptTel', 'kaptFax', 'zipcode', 'doroJuso', 'kaptAddr', 'kaptdaCnt', 'kaptDongCnt', 'codeMgrNm', 'kaptUsedate']);
+  const shown = new Set(['kaptCode', 'kaptName', 'kaptTel', 'kaptFax', 'zipcode', 'doroJuso', 'kaptAddr', 'kaptdaCnt', 'kaptDongCnt', 'codeMgrNm', 'kaptUsedate',
+    '시도', '시군구', '읍면', '동리', '단지코드', '단지명', '법정동주소', '우편번호', '도로명주소', '세대수', '동수', '총주차대수', '관리방식', '사용승인일', '관리사무소 연락처', '관리사무소 팩스']);
   const extra = [];
   list.forEach((x) => Object.keys(x.raw || {}).forEach((k) => { if (!shown.has(k) && !extra.includes(k)) extra.push(k); }));
   extra.sort((a, b) => (Object.keys(KAPT_LABELS).indexOf(a) + 1 || 999) - (Object.keys(KAPT_LABELS).indexOf(b) + 1 || 999));
@@ -259,29 +260,39 @@ async function kaptFile(file) {
     const col = (...names) => { for (const n of names) { const i = H.indexOf(norm(n)); if (i >= 0) return i; } for (const n of names) { const i = H.findIndex((h) => h.includes(norm(n))); if (i >= 0) return i; } return -1; };
     const C = { code: col('단지코드'), name: col('단지명'), sido: col('시도'), sgg: col('시군구'), emd: col('읍면'), dong: col('동리'), addr: col('법정동주소'), doro: col('도로명주소'),
       hh: col('세대수'), dongs: col('동수'), mgr: col('관리방식'), use: col('사용승인일'), park: col('총주차대수'), parkG: col('지상주차대수'), parkU: col('지하주차대수'),
-      cctv: col('CCTV대수'), pctl: col('주차관제'), net: col('홈네트워크'), office: col('관리사무소주소'), mcomp: col('주택관리업자'), kind: col('단지분류') };
+      cctv: col('CCTV대수'), pctl: col('주차관제'), net: col('홈네트워크'), office: col('관리사무소주소'), mcomp: col('주택관리업자'), kind: col('단지분류'),
+      tel: col('관리사무소연락처', '관리사무소전화'), fax: col('관리사무소팩스'), zip: col('우편번호') };
     if (C.code < 0 || C.name < 0) throw new Error('파일 칸 이름을 알아보지 못했습니다.');
     const g = (r, i) => (i >= 0 ? String(r[i] == null ? '' : r[i]).trim() : '');
     const n = (r, i) => { const v = parseInt(g(r, i).replace(/[^\d]/g, ''), 10); return isFinite(v) ? v : null; };
-    let cnt = 0; const seen = new Set();
+    let cnt = 0, phones = 0; const seen = new Set();
     rows.slice(hi + 1).forEach((r) => {
       const code = g(r, C.code); if (!/^[A-Z0-9]{6,12}$/i.test(code)) return;
       const sido = g(r, C.sido), sc = sidoCode(sido) || sidoCode(g(r, C.addr)); if (!sc) return;
       const park = n(r, C.park) || ((n(r, C.parkG) || 0) + (n(r, C.parkU) || 0)) || null;
+      // 파일의 모든 칸을 그대로 (K-apt 단지 기본정보 파일은 88칸)
       const raw = {};
-      [['단지 분류', C.kind], ['관리 방식', C.mgr], ['주택관리업자', C.mcomp], ['사용승인일', C.use], ['동 수', C.dongs], ['총 주차대수', C.park], ['지상 주차대수', C.parkG], ['지하 주차대수', C.parkU], ['CCTV 대수', C.cctv], ['주차관제', C.pctl], ['홈네트워크', C.net], ['관리사무소 주소', C.office]].forEach(([k, i]) => { const v = g(r, i); if (v) raw[k] = v; });
+      rows[hi].forEach((h, i) => { const k = String(h || '').trim(); const v = g(r, i); if (k && v && !/^시\s*분$/.test(v)) raw[k] = v; });
       db.list[code] = Object.assign(db.list[code] || {}, {
         code, sc, name: g(r, C.name), sido, sigungu: g(r, C.sgg), dong: g(r, C.dong) || g(r, C.emd),
         addr: g(r, C.addr), doro: g(r, C.doro), households: n(r, C.hh), dongs: n(r, C.dongs), mgr: g(r, C.mgr), parking: park,
         pctl: g(r, C.pctl), mcomp: g(r, C.mcomp), file: true, raw,
       });
+      // 관리사무소 전화·팩스가 파일에 있으면 공공데이터 호출 없이 바로 채움
+      const tel = g(r, C.tel).replace(/[^\d]/g, ''), fax = g(r, C.fax).replace(/[^\d]/g, '');
+      if (tel || fax) {
+        const prev = db.info[code] || {};
+        db.info[code] = Object.assign({}, prev, { code, ok: true, name: g(r, C.name), tel: tel || prev.tel || '', fax: fax || prev.fax || '', zip: g(r, C.zip) || prev.zip || '',
+          addr: g(r, C.addr), doro: g(r, C.doro), households: n(r, C.hh), dongs: n(r, C.dongs), mgr: g(r, C.mgr), usedate: g(r, C.use), parking: park, src: 'file', raw });
+        phones++;
+      }
       seen.add(sc); cnt++;
     });
     if (!cnt) throw new Error('파일에서 단지를 하나도 읽지 못했습니다.');
     seen.forEach((sc) => { db.listed[sc] = true; });
     db.fileAt = new Date().toISOString().slice(0, 10); db.fileCnt = cnt;
     await kaptSave();
-    K.msg = `파일에서 ${cnt.toLocaleString()}곳을 읽었습니다. 이제 단지 목록은 공공데이터 호출 없이 바로 씁니다.`;
+    K.msg = `파일에서 ${cnt.toLocaleString()}곳을 읽었습니다${phones ? ` (관리사무소 전화·팩스 있는 곳 ${phones.toLocaleString()}곳은 바로 채움)` : ''}. 공공데이터 호출 없이 바로 씁니다.${phones ? ' 전화번호가 빈 곳만 [이어서 받기]나 [카카오 지도로 채우기]로 채우세요.' : ''}`;
   } catch (e) { K.msg = e.message; }
   drawKapt();
 }
