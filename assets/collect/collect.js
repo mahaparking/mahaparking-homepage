@@ -264,7 +264,7 @@ function kaptFiltered() {
   const reg = new Set(D.sites.map((x) => nmKey(x.name)));
   return kaptRows().filter((x) => (!K.sidos.length || K.sidos.includes(x.sc)) && (!K.sggs.length || K.sggs.includes(x.sc + '|' + x.sigungu))
       && (!K.hasAddr || x.doro || x.addr) && (!K.noAddr || !(x.doro || x.addr)) && (!K.hasTel || x.tel) && (!K.noTel || !x.tel) && (!K.notReg || !reg.has(nmKey(x.name)))
-      && (!K.minHh || (x.households || 0) >= K.minHh)
+      && (!K.minHh || (x.households || 0) >= K.minHh) && (!K.maxHh || (x.households || 0) <= K.maxHh)
       && (!qq || kMatch(x, K.qf, qq, qd)))
     .sort((a, b) => KO.compare(a.sc + (a.sigungu || '') + a.name, b.sc + (b.sigungu || '') + b.name));
 }
@@ -615,7 +615,7 @@ async function drawKapt() {
       ${mselHtml({ id: 'kp-sf', all: '전국', options: KAPT_SIDO, selected: K.sidos })}
       ${mselHtml({ id: 'kp-sgg', all: '시·군·구 전체', placeholder: '시·군·구 (시·도를 먼저)', options: sggs, selected: K.sggs })}
       <div class="kp-search"><select id="kp-qf" aria-label="찾을 곳">${K_QF.map(([v, n]) => `<option value="${v}"${(K.qf || 'all') === v ? ' selected' : ''}>${n}</option>`).join('')}</select><input id="kp-q" type="search" placeholder="${{ all: '검색어', name: '예) 래미안', addr: '예) 평촌동, 관악대로', tel: '예) 031-123 또는 1234', mgr: '예) 우리관리', memo: '메모 내용' }[K.qf || 'all']}" value="${esc(K.q)}"></div>
-      <label class="kp-hh">세대수 <input id="kp-minhh" inputmode="numeric" value="${K.minHh || ''}" placeholder="0"> 이상</label>
+      <label class="kp-hh">세대수 <input id="kp-minhh" inputmode="numeric" value="${K.minHh || ''}" placeholder="0" aria-label="세대수 이상"> 이상 ~ <input id="kp-maxhh" inputmode="numeric" value="${K.maxHh || ''}" placeholder="제한 없음" aria-label="세대수 이하"> 이하</label>
     </div>
     <div class="kp-filter kp-chk">
       <label class="sl-chk"><input type="checkbox" id="kp-hastel"${K.hasTel ? ' checked' : ''}> 전화 있는 곳만</label>
@@ -623,7 +623,7 @@ async function drawKapt() {
       <label class="sl-chk"><input type="checkbox" id="kp-hasaddr"${K.hasAddr ? ' checked' : ''}> 주소 있는 곳만</label>
       <label class="sl-chk"><input type="checkbox" id="kp-noaddr"${K.noAddr ? ' checked' : ''}> 주소 없는 곳만</label>
       <label class="sl-chk"><input type="checkbox" id="kp-notreg"${K.notReg ? ' checked' : ''}> 고객사 리스트에 없는 곳만</label>
-      ${K.q || K.sidos.length || K.minHh || K.hasAddr || K.noAddr || K.hasTel || K.noTel || K.notReg ? '<button class="btn btn-line btn-sm" type="button" id="kp-clear">조건 지우기</button>' : ''}
+      ${K.q || K.sidos.length || K.minHh || K.maxHh || K.hasAddr || K.noAddr || K.hasTel || K.noTel || K.notReg ? '<button class="btn btn-line btn-sm" type="button" id="kp-clear">조건 지우기</button>' : ''}
     </div>
     <div class="kp-bar">
       <span class="kp-count"><b>${list.length.toLocaleString()}</b>곳</span>
@@ -656,13 +656,14 @@ async function drawKapt() {
   mselBind(root, 'kp-sgg', (v) => { K.sggs = v; re(); });
   on('#kp-q', 'onchange', (e) => { K.q = e.target.value; re(); });
   on('#kp-qf', 'onchange', (e) => { K.qf = e.target.value; if (K.q) re(); else drawKapt(); });
+  on('#kp-maxhh', 'onchange', (e) => { K.maxHh = parseInt(digits(e.target.value), 10) || 0; try { localStorage.setItem('maha_kapt_maxhh', K.maxHh); } catch (x) {} re(); });
   on('#kp-minhh', 'onchange', (e) => { K.minHh = parseInt(digits(e.target.value), 10) || 0; try { localStorage.setItem('maha_kapt_minhh', K.minHh); } catch (x) {} re(); });
   on('#kp-hastel', 'onchange', (e) => { K.hasTel = e.target.checked; if (K.hasTel) K.noTel = false; re(); });
   on('#kp-notel', 'onchange', (e) => { K.noTel = e.target.checked; if (K.noTel) K.hasTel = false; re(); });
   on('#kp-hasaddr', 'onchange', (e) => { K.hasAddr = e.target.checked; if (K.hasAddr) K.noAddr = false; re(); });
   on('#kp-noaddr', 'onchange', (e) => { K.noAddr = e.target.checked; if (K.noAddr) K.hasAddr = false; re(); });
   on('#kp-notreg', 'onchange', (e) => { K.notReg = e.target.checked; re(); });
-  on('#kp-clear', 'onclick', () => { Object.assign(K, { q: '', qf: 'all', sidos: [], sggs: [], minHh: 0, hasTel: false, hasAddr: false, noAddr: false, noTel: false, notReg: false }); try { localStorage.setItem('maha_kapt_minhh', 0); } catch (x) {} re(); });
+  on('#kp-clear', 'onclick', () => { Object.assign(K, { q: '', qf: 'all', sidos: [], sggs: [], minHh: 0, maxHh: 0, hasTel: false, hasAddr: false, noAddr: false, noTel: false, notReg: false }); try { localStorage.setItem('maha_kapt_minhh', 0); localStorage.setItem('maha_kapt_maxhh', 0); } catch (x) {} re(); });
   on('#kp-more', 'onclick', () => { K.limit += 300; drawKapt(); });
   on('#kp-go', 'onclick', () => kaptRun('kapt'));
   on('#kp-kakao', 'onclick', () => kaptRun('kakao'));
@@ -688,7 +689,7 @@ const HOUSE = makeHouse({ sb, body, D, digits, tel, nowIso, loadXlsxLib, api, is
 const PARK = makePark({ sb, body, D, digits, tel, nowIso, loadXlsxLib, isOpen: () => CV.sub === 'park' });
 async function load() {
   root.innerHTML = '<p class="hint">불러오는 중…</p>';
-  try { K.minHh = parseInt(localStorage.getItem('maha_kapt_minhh'), 10) || 0; } catch (e) {}
+  try { K.minHh = parseInt(localStorage.getItem('maha_kapt_minhh'), 10) || 0; K.maxHh = parseInt(localStorage.getItem('maha_kapt_maxhh'), 10) || 0; } catch (e) {}
   const r = await sb.from('sites').select('id,name').limit(20000);
   D.sites = r.error ? [] : (r.data || []); D.loaded = true;
   mount();

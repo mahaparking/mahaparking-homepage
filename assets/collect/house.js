@@ -311,7 +311,7 @@ export function makeHouse(ctx) {
       </div>
       <div class="kp-filter">
         ${mselHtml({ id: 'hs-kind', all: '구분 전체', options: KINDS.map((k) => [k, k]), selected: P.kinds })}
-        <label class="kp-hh">세대수 <input id="hs-min" inputmode="numeric" value="${P.min || ''}" placeholder="0"> ~ <input id="hs-max" inputmode="numeric" value="${P.max || ''}" placeholder="300"></label>
+        <label class="kp-hh">세대수 <input id="hs-min" inputmode="numeric" value="${P.min || ''}" placeholder="0" aria-label="세대수 이상"> 이상 ~ <input id="hs-max" inputmode="numeric" value="${P.max || ''}" placeholder="제한 없음" aria-label="세대수 이하"> 이하</label>
         <label class="kp-hh">주차 <input id="hs-pmin" inputmode="numeric" value="${P.pmin || ''}" placeholder="0"> 대 이상</label>
       </div>
       <div class="kp-filter kp-chk">
