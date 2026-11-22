@@ -97,8 +97,11 @@ async function kaptLoad0() {
   // 예전에 0곳으로 끝난 시·도는 '받음' 표시를 지워 다시 받게 하기
   const has = {}; Object.values(K.db.list || {}).forEach((a) => { has[a.sc] = 1; });
   Object.keys(K.db.listed || {}).forEach((sc) => { if (!has[sc]) delete K.db.listed[sc]; });
-  try { const s = await kIdbGet(SENT_KEY); if (s) { KS.sent = s.sent || {}; KS.at = s.at || ''; } } catch (e) {}
-  await kPull();
+  try { const s = await kIdbGet(SENT_KEY); if (s) { KS.sent = s.sent || {}; KS.at = s.at || ''; KS.ver = s.ver || {}; } } catch (e) {}
+  if (Object.keys(K.db.list).length) {   // 이 PC에 복사본이 있으면 바로 보여 주고, 서버와는 뒤에서 맞추기
+    KS.note = '☁ 서버와 맞추는 중…';
+    kPull().then((n) => { if (n && CV.sub === 'kapt' && !K.run) drawKapt(); else kaptPaint(); });
+  } else await kPull();
   if (kFixNums(K.db)) { K.msg = '세대수 · 동수 · 주차대수를 파일 원본 값으로 바로잡았습니다.'; await kaptSave(); } else if (!K.db.numFix) { K.db.numFix = 1; }
   return K.db;
 }
@@ -113,7 +116,7 @@ async function kaptSave() {
  * 이 PC(IndexedDB)는 빠르게 열기 위한 복사본이고, 진짜 명단은 서버에 있습니다.
  * 바뀐 단지만 골라 몇 초 뒤 서버에 올리고(kPush), 열 때 다른 PC에서 바뀐 것만 받아옵니다(kPull). */
 const SENT_KEY = 'maha_kapt_sent_v1';
-const KS = { sent: {}, at: '', off: false, busy: false, again: false, timer: 0, note: '' };
+const KS = { sent: {}, at: '', ver: {}, off: false, busy: false, again: false, timer: 0, note: '' };
 const h32 = (s) => { let h = 5381; for (let i = 0; i < s.length; i++) h = ((h << 5) + h + s.charCodeAt(i)) | 0; return (h >>> 0).toString(36) + s.length.toString(36); };
 function kRow(code) {   // 서버에 올릴 한 단지 — 용량을 줄이려고 파일 칸 이름은 _meta 에 한 번만 두고 값만 순서대로(rv) 보냄
   const a = K.db.list[code] || null, i = K.db.info[code];
@@ -139,41 +142,52 @@ function kUnRow(l) {   // 서버 → 이 PC: rv(값 배열)를 다시 raw(칸 �
   const o = Object.assign({}, l, { raw }); delete o.rv; return o;
 }
 const kMeta = () => ({ code: '_meta', list: { sidos: K.db.sidos, listed: K.db.listed, fileAt: K.db.fileAt || null, fileCnt: K.db.fileCnt || null, resetAt: K.db.resetAt || null, numFix: K.db.numFix || 0, rawh: K.db.rawh || [] }, info: null });
-async function kKeepSent() { try { await kIdbSet(SENT_KEY, { sent: KS.sent, at: KS.at }); } catch (e) {} }
+async function kKeepSent() { try { await kIdbSet(SENT_KEY, { sent: KS.sent, at: KS.at, ver: KS.ver }); } catch (e) {} }
 function kOff(e) {
   if (/kapt_complex|schema cache|does not exist/i.test((e && e.message) || '')) { KS.off = true; KS.note = '⚠ 서버에 명단 표가 아직 없어 이 PC에만 저장됩니다. (supabase/kapt.sql 실행 필요)'; return true; }
   KS.note = '⚠ 서버에 저장하지 못했습니다. 잠시 뒤 다시 저장합니다. (' + ((e && e.message) || e) + ')'; return false;
 }
-async function kPull() {
-  if (KS.off) return;
+async function kPull() {   // 서버에서 바뀐 단지만: ① 코드·시각만 가볍게 훑고 ② 이 PC와 다른 것만 내용 받기. 돌려주는 값 = 바뀐 단지 수
+  if (KS.off) return 0;
   try {
-    const rows = [];
+    const heads = [];
     for (let off = 0; ; off += 1000) {
-      let qy = sb.from('kapt_complex').select('code,list,info,updated_at').order('updated_at').order('code').range(off, off + 999);
+      let qy = sb.from('kapt_complex').select('code,updated_at').order('updated_at').order('code').range(off, off + 999);
       if (KS.at) qy = qy.gt('updated_at', KS.at);
       const { data, error } = await qy; if (error) throw error;
-      rows.push(...data);
-      if (rows.length > 3000) { K.msg = `서버에서 명단 받는 중… ${rows.length.toLocaleString()}곳`; kaptPaint(); }
+      heads.push(...data);
       if (data.length < 1000) break;
     }
+    const want = heads.filter((h) => KS.ver[h.code] !== h.updated_at).map((h) => h.code);
+    if (want.includes('_meta')) { want.splice(want.indexOf('_meta'), 1); want.unshift('_meta'); }
+    const rows = [];
+    for (let i = 0; i < want.length; i += 300) {
+      const { data, error } = await sb.from('kapt_complex').select('code,list,info,updated_at').in('code', want.slice(i, i + 300)); if (error) throw error;
+      rows.push(...data);
+      if (want.length > 1000) { KS.note = `☁ 서버에서 명단 받는 중… ${Math.min(i + 300, want.length).toLocaleString()} / ${want.length.toLocaleString()}곳`; if (!Object.keys(K.db.list).length) K.msg = KS.note; kaptPaint(); }
+    }
     const meta = rows.find((r) => r.code === '_meta');
-    if (meta && meta.list && meta.list.resetAt && meta.list.resetAt !== (K.db.resetAt || null) && KS.at) {   // 다른 PC에서 "처음부터 다시" → 이 PC 복사본도 비우고 전부 다시 받기
-      K.db = { sidos: K.db.sidos, listed: {}, list: {}, info: {}, resetAt: meta.list.resetAt }; KS.sent = {}; KS.at = ''; return kPull();
+    if (meta && meta.list && meta.list.resetAt && meta.list.resetAt !== (K.db.resetAt || null) && KS.at) {   // 다른 PC에서 "명단 전체 지우기" → 이 PC 복사본도 비우고 전부 다시 받기
+      K.db = { sidos: K.db.sidos, listed: {}, list: {}, info: {}, resetAt: meta.list.resetAt }; KS.sent = {}; KS.ver = {}; KS.at = ''; return kPull();
     }
     if (meta && meta.list && meta.list.rawh) K.db.rawh = meta.list.rawh;
     rows.sort((x, y) => (x.code === '_meta' ? -1 : y.code === '_meta' ? 1 : 0));
     rows.forEach((r) => {
+      KS.ver[r.code] = r.updated_at;
       if (r.code === '_meta') { const m = r.list || {}; if (m.sidos) K.db.sidos = m.sidos; K.db.listed = m.listed || {}; K.db.fileAt = m.fileAt || K.db.fileAt; K.db.fileCnt = m.fileCnt || K.db.fileCnt; K.db.resetAt = m.resetAt || null; if (m.numFix) K.db.numFix = m.numFix; KS.sent._meta = h32(JSON.stringify(kMeta())); return; }
       const L = kUnRow(r.list);
       if (L) K.db.list[r.code] = L; else delete K.db.list[r.code];
       if (r.info) { const i = Object.assign({}, r.info); if (i.raw && L && L.raw) i.raw = Object.assign({}, L.raw, i.raw); K.db.info[r.code] = i; } else delete K.db.info[r.code];
       KS.sent[r.code] = h32(JSON.stringify(kRow(r.code)));
     });
-    if (rows.length) { KS.at = rows.reduce((m, r) => (r.updated_at > m ? r.updated_at : m), KS.at || ''); await kIdbSet(KAPT_KEY, K.db).catch(() => {}); await kKeepSent(); }
-    KS.note = '☁ 서버 명단과 맞췄습니다. 어느 PC에서든 같은 명단이 보입니다.';
-    K.msg = '';
+    if (heads.length) KS.at = heads.reduce((m, h) => (h.updated_at > m ? h.updated_at : m), KS.at || '');
+    if (rows.length) await kIdbSet(KAPT_KEY, K.db).catch(() => {});
+    if (heads.length) await kKeepSent();
+    KS.note = rows.length ? `☁ 서버 명단과 맞췄습니다 (바뀐 곳 ${(rows.length - (meta ? 1 : 0)).toLocaleString()}곳 받음)` : '☁ 서버 명단과 같습니다. 어느 PC에서든 같은 명단이 보입니다.';
+    if (/서버에서 명단 받는/.test(K.msg)) K.msg = '';
     kSchedule(0);   // 이 PC에만 있던 것(서버 저장 전에 받은 것)은 서버로 올리기
-  } catch (e) { kOff(e); }
+    return rows.length;
+  } catch (e) { kOff(e); return 0; }
 }
 async function kPush() {
   if (KS.off || !K.db) return;
@@ -188,8 +202,9 @@ async function kPush() {
       if (KS.sent._meta !== mh) { rows.unshift(m); hs._meta = mh; }
       for (let i = 0; i < rows.length; i += 300) {
         const part = rows.slice(i, i + 300);
-        const { error } = await sb.from('kapt_complex').upsert(part); if (error) throw error;
+        const { data, error } = await sb.from('kapt_complex').upsert(part).select('code,updated_at'); if (error) throw error;
         part.forEach((r) => { KS.sent[r.code] = hs[r.code]; });
+        (data || []).forEach((r) => { KS.ver[r.code] = r.updated_at; });
         if (rows.length > 300) { KS.note = `☁ 서버에 저장하는 중… ${Math.min(i + 300, rows.length).toLocaleString()} / ${rows.length.toLocaleString()}곳`; kaptPaint(); }
       }
       if (rows.length) { await kKeepSent(); KS.note = `☁ 서버에 저장됨 (${new Date().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })})`; }
@@ -227,6 +242,7 @@ function kaptPaint() {
   const sy = root.querySelector('#kp-sync'); if (sy) sy.textContent = KS.note;
 }
 
+const KO = new Intl.Collator('ko');
 const nmKey = (s) => String(s || '').replace(/\s|\(.*?\)/g, '');
 function kaptFiltered() {
   const qq = K.q.replace(/\s/g, '');
@@ -235,7 +251,7 @@ function kaptFiltered() {
       && (!K.hasTel || x.tel) && (!K.noTel || !x.tel) && (!K.notReg || !reg.has(nmKey(x.name)))
       && (!K.minHh || (x.households || 0) >= K.minHh)
       && (!qq || [x.name, x.sido, x.sigungu, x.dong, x.doro, x.addr, x.mcomp, x.memo].join(' ').replace(/\s/g, '').includes(qq)))
-    .sort((a, b) => (a.sc + a.sigungu + a.name).localeCompare(b.sc + b.sigungu + b.name, 'ko'));
+    .sort((a, b) => KO.compare(a.sc + (a.sigungu || '') + a.name, b.sc + (b.sigungu || '') + b.name));
 }
 
 async function kaptExcel(list) {
@@ -501,7 +517,7 @@ async function kaptReset() {
   const resetAt = new Date().toISOString();
   K.db = { sidos: K.db.sidos, listed: {}, list: {}, info: {}, resetAt };
   if (!KS.off) { const { error } = await sb.from('kapt_complex').delete().neq('code', '_meta'); if (error) kOff(error); }
-  KS.sent = {}; await kKeepSent(); await kaptSave(); K.msg = ''; drawKapt();
+  KS.sent = {}; KS.ver = {}; await kKeepSent(); await kaptSave(); K.msg = ''; drawKapt();
 }
 /* 단지 고치기 · 삭제 · 직접 추가 (서버에 바로 저장) */
 function kEdit(code) {
