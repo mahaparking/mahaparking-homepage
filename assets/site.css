@@ -459,3 +459,9 @@ main section,body > section{padding:104px 0}
   .up-gallery .up-ph:nth-child(6)::after{font-size:14px}
   .up-more > .up-grid{padding:14px}
 }
+
+/* ===== PC: 항목마다 한 화면(한 페이지)처럼 (2026-11-22) ===== */
+@media (min-width:861px) and (min-height:620px){
+  #view-home > section{min-height:calc(100vh - 92px);display:flex;flex-direction:column;justify-content:center;padding:80px 0}
+  #view-home > section > *{width:100%}
+}
