@@ -60,6 +60,25 @@ const KAPT_LABELS = {
   useYn: '사용 여부', _detailError: '상세 정보 오류',
 };
 const kLabel = (k) => KAPT_LABELS[k] || k;
+/* 숫자 칸 읽기: "780.0" · "1,234" 처럼 소수점·쉼표가 붙어도 정확히 (예전에는 780.0 → 7800으로 잘못 읽힘) */
+const kNum = (s) => { const m = String(s == null ? '' : s).replace(/,/g, '').match(/-?\d+(\.\d+)?/); if (!m) return null; const v = Math.round(parseFloat(m[0])); return isFinite(v) ? v : null; };
+/* 이미 저장된 명단의 세대수 · 동수 · 주차대수를 파일 원본 칸(raw)으로 다시 계산해 바로잡기 (한 번만) */
+function kFixNums(db) {
+  if (db.numFix) return false;
+  const pickRaw = (raw, ...names) => { const ks = Object.keys(raw || {}); for (const nm of names) { const k = ks.find((x) => x.replace(/\s|\(.*?\)/g, '') === nm); if (k) return raw[k]; } return undefined; };
+  let fixed = 0;
+  Object.values(db.list).forEach((a) => {
+    if (!a.file || !a.raw) return;
+    const hh = kNum(pickRaw(a.raw, '세대수')), dg = kNum(pickRaw(a.raw, '동수'));
+    const pk = kNum(pickRaw(a.raw, '총주차대수')) || ((kNum(pickRaw(a.raw, '지상주차대수')) || 0) + (kNum(pickRaw(a.raw, '지하주차대수')) || 0)) || null;
+    const set = { households: hh, dongs: dg, parking: pk };
+    Object.keys(set).forEach((k) => { if (set[k] != null && a[k] !== set[k]) { a[k] = set[k]; fixed++; } });
+    const i = db.info[a.code];
+    if (i && i.src === 'file') Object.keys(set).forEach((k) => { if (set[k] != null) i[k] = set[k]; });
+  });
+  db.numFix = 1;
+  return fixed > 0;
+}
 
 const K = { run: false, stop: false, msg: '', sidoF: 'all', q: '', db: null };
 /* 전국 2만 곳은 localStorage(5MB)에 다 안 들어가서 IndexedDB에 저장합니다. */
@@ -80,6 +99,7 @@ async function kaptLoad0() {
   Object.keys(K.db.listed || {}).forEach((sc) => { if (!has[sc]) delete K.db.listed[sc]; });
   try { const s = await kIdbGet(SENT_KEY); if (s) { KS.sent = s.sent || {}; KS.at = s.at || ''; } } catch (e) {}
   await kPull();
+  if (kFixNums(K.db)) { K.msg = '세대수 · 동수 · 주차대수를 파일 원본 값으로 바로잡았습니다.'; await kaptSave(); } else if (!K.db.numFix) { K.db.numFix = 1; }
   return K.db;
 }
 async function kaptSave() {
@@ -101,7 +121,7 @@ function kRow(code) {   // 서버에 올릴 한 단지 (파일 칸과 같은 값
   if (i) { info = Object.assign({}, i); if (i.raw && a && a.raw) { const r = {}; Object.keys(i.raw).forEach((k) => { if (a.raw[k] !== i.raw[k]) r[k] = i.raw[k]; }); info.raw = r; } }
   return { code, list: a, info };
 }
-const kMeta = () => ({ code: '_meta', list: { sidos: K.db.sidos, listed: K.db.listed, fileAt: K.db.fileAt || null, fileCnt: K.db.fileCnt || null, resetAt: K.db.resetAt || null }, info: null });
+const kMeta = () => ({ code: '_meta', list: { sidos: K.db.sidos, listed: K.db.listed, fileAt: K.db.fileAt || null, fileCnt: K.db.fileCnt || null, resetAt: K.db.resetAt || null, numFix: K.db.numFix || 0 }, info: null });
 async function kKeepSent() { try { await kIdbSet(SENT_KEY, { sent: KS.sent, at: KS.at }); } catch (e) {} }
 function kOff(e) {
   if (/kapt_complex|schema cache|does not exist/i.test((e && e.message) || '')) { KS.off = true; KS.note = '⚠ 서버에 명단 표가 아직 없어 이 PC에만 저장됩니다. (supabase/kapt.sql 실행 필요)'; return true; }
@@ -124,7 +144,7 @@ async function kPull() {
       K.db = { sidos: K.db.sidos, listed: {}, list: {}, info: {}, resetAt: meta.list.resetAt }; KS.sent = {}; KS.at = ''; return kPull();
     }
     rows.forEach((r) => {
-      if (r.code === '_meta') { const m = r.list || {}; if (m.sidos) K.db.sidos = m.sidos; K.db.listed = m.listed || {}; K.db.fileAt = m.fileAt || K.db.fileAt; K.db.fileCnt = m.fileCnt || K.db.fileCnt; K.db.resetAt = m.resetAt || null; KS.sent._meta = h32(JSON.stringify(kMeta())); return; }
+      if (r.code === '_meta') { const m = r.list || {}; if (m.sidos) K.db.sidos = m.sidos; K.db.listed = m.listed || {}; K.db.fileAt = m.fileAt || K.db.fileAt; K.db.fileCnt = m.fileCnt || K.db.fileCnt; K.db.resetAt = m.resetAt || null; if (m.numFix) K.db.numFix = m.numFix; KS.sent._meta = h32(JSON.stringify(kMeta())); return; }
       if (r.list) K.db.list[r.code] = r.list; else delete K.db.list[r.code];
       if (r.info) { const i = r.info; if (i.raw && r.list && r.list.raw) i.raw = Object.assign({}, r.list.raw, i.raw); K.db.info[r.code] = i; } else delete K.db.info[r.code];
       KS.sent[r.code] = h32(JSON.stringify(kRow(r.code)));
@@ -361,7 +381,7 @@ async function kaptFile(file) {
       tel: col('관리사무소연락처', '관리사무소전화'), fax: col('관리사무소팩스'), zip: col('우편번호') };
     if (C.code < 0 || C.name < 0) throw new Error('파일 칸 이름을 알아보지 못했습니다.');
     const g = (r, i) => (i >= 0 ? String(r[i] == null ? '' : r[i]).trim() : '');
-    const n = (r, i) => { const v = parseInt(g(r, i).replace(/[^\d]/g, ''), 10); return isFinite(v) ? v : null; };
+    const n = (r, i) => kNum(g(r, i));
     let cnt = 0, phones = 0; const seen = new Set();
     rows.slice(hi + 1).forEach((r) => {
       const code = g(r, C.code); if (!/^[A-Z0-9]{6,12}$/i.test(code)) return;
