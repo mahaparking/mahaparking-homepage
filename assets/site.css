@@ -439,9 +439,6 @@ main section,body > section{padding:104px 0}
 .up-stats{gap:16px;margin:0 0 22px}
 .up-gallery-head{margin:48px 0 16px}
 .up-gallery{gap:12px}
-.up-gallery .up-ph:nth-child(n+7){display:none}
-.up-gallery .up-ph:nth-child(6){position:relative}
-.up-gallery .up-ph:nth-child(6)::after{content:'+6장 더';position:absolute;inset:0;display:grid;place-items:center;background:rgba(7,26,46,.55);color:#fff;font-weight:800;font-size:17px;border-radius:inherit}
 .up-more{margin:0 0 6px;border:1px solid var(--line);border-radius:14px;background:#fff}
 .up-more > summary{cursor:pointer;list-style:none;padding:18px 24px;font-weight:800;font-size:16px;display:flex;justify-content:space-between;align-items:center;color:var(--ink)}
 .up-more > summary::-webkit-details-marker{display:none}
@@ -456,8 +453,7 @@ main section,body > section{padding:104px 0}
 @media (max-width:860px){
   main section,body > section{padding:72px 0}
   .sec-head{margin-bottom:34px}
-  .up-gallery .up-ph:nth-child(6)::after{font-size:14px}
-  .up-more > .up-grid{padding:14px}
+    .up-more > .up-grid{padding:14px}
 }
 
 /* ===== 모든 칸 위아래 간격 통일 (2026-11-22) ===== */
