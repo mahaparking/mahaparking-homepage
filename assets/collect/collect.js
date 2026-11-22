@@ -4,6 +4,7 @@
  *                  ③ 공공데이터 하루 횟수를 다 쓰면 카카오 지도로 전화번호 채우기
  *  모은 곳은 엑셀로 저장하거나 고객사 리스트(sites)에 "영업 대상"으로 넣습니다.
  */
+import { makePark } from './parking.js';
 const sb = supabase.createClient(MAHA.SB_URL, MAHA.SB_KEY);
 const root = document.getElementById('collect-root');
 const D = { sites: [], loaded: false };
@@ -564,9 +565,9 @@ function kEdit(code) {
 
 /* ---------- 화면 ---------- */
 function mount() {
-  root.innerHTML = `<div class="sl-subs" role="tablist">${[['find', '🔎 하나씩 찾기'], ['kapt', '🏢 아파트 명단 (한꺼번에)']].map(([k, t]) => `<button type="button" role="tab" data-sub="${k}" aria-selected="${k === CV.sub}">${t}</button>`).join('')}</div><div id="cl-body"></div>`;
+  root.innerHTML = `<div class="sl-subs" role="tablist">${[['find', '🔎 하나씩 찾기'], ['kapt', '🏢 아파트 명단'], ['park', '🅿 주차장 명단']].map(([k, t]) => `<button type="button" role="tab" data-sub="${k}" aria-selected="${k === CV.sub}">${t}</button>`).join('')}</div><div id="cl-body"></div>`;
   root.querySelectorAll('[data-sub]').forEach((b) => { b.onclick = () => { CV.sub = b.dataset.sub; mount(); }; });
-  (CV.sub === 'find' ? drawFind : drawKapt)();
+  (CV.sub === 'find' ? drawFind : CV.sub === 'park' ? PARK.draw : drawKapt)();
 }
 async function drawKapt() {
   if (!K.db) { body().innerHTML = '<p class="hint">불러오는 중…</p>'; await kaptLoad(); if (CV.sub !== 'kapt') return; }
@@ -662,6 +663,7 @@ async function drawKapt() {
   root.querySelectorAll('[data-kinfo]').forEach((tr) => { tr.onclick = (e) => { if (e.target.closest('a')) return; kEdit(tr.dataset.kinfo); }; });
 }
 
+const PARK = makePark({ sb, body, D, digits, tel, nowIso, loadXlsxLib, isOpen: () => CV.sub === 'park' });
 async function load() {
   root.innerHTML = '<p class="hint">불러오는 중…</p>';
   try { K.minHh = parseInt(localStorage.getItem('maha_kapt_minhh'), 10) || 0; } catch (e) {}
