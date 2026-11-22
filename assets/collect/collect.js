@@ -262,7 +262,7 @@ function kaptFiltered() {
   const qq = K.q.replace(/\s/g, ''), qd = digits(K.q);
   const reg = new Set(D.sites.map((x) => nmKey(x.name)));
   return kaptRows().filter((x) => (!K.sidos.length || K.sidos.includes(x.sc)) && (!K.sggs.length || K.sggs.includes(x.sc + '|' + x.sigungu))
-      && (!K.hasAddr || x.doro || x.addr) && (!K.hasTel || x.tel) && (!K.noTel || !x.tel) && (!K.notReg || !reg.has(nmKey(x.name)))
+      && (!K.hasAddr || x.doro || x.addr) && (!K.noAddr || !(x.doro || x.addr)) && (!K.hasTel || x.tel) && (!K.noTel || !x.tel) && (!K.notReg || !reg.has(nmKey(x.name)))
       && (!K.minHh || (x.households || 0) >= K.minHh)
       && (!qq || kMatch(x, K.qf, qq, qd)))
     .sort((a, b) => KO.compare(a.sc + (a.sigungu || '') + a.name, b.sc + (b.sigungu || '') + b.name));
@@ -620,8 +620,9 @@ async function drawKapt() {
       <label class="sl-chk"><input type="checkbox" id="kp-hastel"${K.hasTel ? ' checked' : ''}> 전화 있는 곳만</label>
       <label class="sl-chk"><input type="checkbox" id="kp-notel"${K.noTel ? ' checked' : ''}> 전화 없는 곳만</label>
       <label class="sl-chk"><input type="checkbox" id="kp-hasaddr"${K.hasAddr ? ' checked' : ''}> 주소 있는 곳만</label>
+      <label class="sl-chk"><input type="checkbox" id="kp-noaddr"${K.noAddr ? ' checked' : ''}> 주소 없는 곳만</label>
       <label class="sl-chk"><input type="checkbox" id="kp-notreg"${K.notReg ? ' checked' : ''}> 고객사 리스트에 없는 곳만</label>
-      ${K.q || K.sidos.length || K.minHh || K.hasAddr || K.hasTel || K.noTel || K.notReg ? '<button class="btn btn-line btn-sm" type="button" id="kp-clear">조건 지우기</button>' : ''}
+      ${K.q || K.sidos.length || K.minHh || K.hasAddr || K.noAddr || K.hasTel || K.noTel || K.notReg ? '<button class="btn btn-line btn-sm" type="button" id="kp-clear">조건 지우기</button>' : ''}
     </div>
     <div class="kp-bar">
       <span class="kp-count"><b>${list.length.toLocaleString()}</b>곳</span>
@@ -657,9 +658,10 @@ async function drawKapt() {
   on('#kp-minhh', 'onchange', (e) => { K.minHh = parseInt(digits(e.target.value), 10) || 0; try { localStorage.setItem('maha_kapt_minhh', K.minHh); } catch (x) {} re(); });
   on('#kp-hastel', 'onchange', (e) => { K.hasTel = e.target.checked; if (K.hasTel) K.noTel = false; re(); });
   on('#kp-notel', 'onchange', (e) => { K.noTel = e.target.checked; if (K.noTel) K.hasTel = false; re(); });
-  on('#kp-hasaddr', 'onchange', (e) => { K.hasAddr = e.target.checked; re(); });
+  on('#kp-hasaddr', 'onchange', (e) => { K.hasAddr = e.target.checked; if (K.hasAddr) K.noAddr = false; re(); });
+  on('#kp-noaddr', 'onchange', (e) => { K.noAddr = e.target.checked; if (K.noAddr) K.hasAddr = false; re(); });
   on('#kp-notreg', 'onchange', (e) => { K.notReg = e.target.checked; re(); });
-  on('#kp-clear', 'onclick', () => { Object.assign(K, { q: '', qf: 'all', sidos: [], sggs: [], minHh: 0, hasTel: false, hasAddr: false, noTel: false, notReg: false }); try { localStorage.setItem('maha_kapt_minhh', 0); } catch (x) {} re(); });
+  on('#kp-clear', 'onclick', () => { Object.assign(K, { q: '', qf: 'all', sidos: [], sggs: [], minHh: 0, hasTel: false, hasAddr: false, noAddr: false, noTel: false, notReg: false }); try { localStorage.setItem('maha_kapt_minhh', 0); } catch (x) {} re(); });
   on('#kp-more', 'onclick', () => { K.limit += 300; drawKapt(); });
   on('#kp-go', 'onclick', () => kaptRun('kapt'));
   on('#kp-kakao', 'onclick', () => kaptRun('kakao'));
