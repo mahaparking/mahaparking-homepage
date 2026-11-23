@@ -60,7 +60,10 @@ function draw() {
   const cnt = (s) => D.members.filter((x) => x.status === s).length;
   const tabs = [['all', `전체 ${D.members.filter((x) => x.status !== 'deleted').length}`], ['pending', `승인 대기 ${cnt('pending')}`], ['active', `사용 중 ${cnt('active')}`], ['hold', `보류 ${cnt('hold')}`], ['deleted', `삭제 ${cnt('deleted')}`]];
   root.innerHTML = `
-    <p class="hint" style="margin-top:0">직원·파트너는 로그인 화면의 <b>"가입 신청"</b>으로 계정을 만들고, 여기서 승인하면 들어올 수 있습니다. 승인할 때 볼 수 있는 메뉴를 정해 주세요.</p>
+    <div style="display:flex;gap:12px;align-items:flex-start;justify-content:space-between;flex-wrap:wrap">
+      <p class="hint" style="margin:0;flex:1;min-width:240px">대표님이 <b>"＋ 계정 등록"</b>으로 직접 만들거나, 직원·파트너가 로그인 화면의 <b>"가입 신청"</b>으로 신청하면 여기서 승인합니다.</p>
+      <button class="btn btn-primary btn-sm" id="mb-new">＋ 계정 등록</button>
+    </div>
     <div class="sl-subs" role="tablist">${tabs.map(([k, t]) => `<button type="button" role="tab" data-f="${k}" aria-selected="${k === V.filter}">${t}</button>`).join('')}</div>
     ${list.length ? `<div class="tbl-wrap"><table class="mb-tbl"><thead><tr><th>이름</th><th>구분</th><th>업체 · 연락처</th><th>상태</th><th>볼 수 있는 메뉴</th><th></th></tr></thead><tbody>
       ${list.map((x) => {
@@ -75,13 +78,57 @@ function draw() {
           <td style="white-space:nowrap">${x.status === 'pending' ? `<button class="btn btn-primary btn-sm" data-ok="${x.user_id}">승인</button> ` : ''}<button class="btn btn-line btn-sm" data-ed="${x.user_id}">설정</button></td>
         </tr>`;
       }).join('')}</tbody></table></div>` : '<p class="hint">해당하는 계정이 없습니다.</p>'}`;
+  root.querySelector('#mb-new').onclick = create;
   root.querySelectorAll('[data-f]').forEach((b) => { b.onclick = () => { V.filter = b.dataset.f; draw(); }; });
   root.querySelectorAll('[data-ed]').forEach((b) => { b.onclick = () => edit(b.dataset.ed); });
   root.querySelectorAll('[data-ok]').forEach((b) => { b.onclick = () => edit(b.dataset.ok, true); });
 }
 
+/* 대표가 직접 계정 만들기: 아이디(이메일)·비밀번호를 정해 주고 바로 권한 설정으로 이어짐
+ * (대표님 로그인은 그대로 두고, 별도 연결로 새 계정만 만듭니다) */
+function create() {
+  modal(`
+    <h3>계정 등록</h3>
+    <p class="hint">정한 이메일과 비밀번호를 본인에게 알려 주세요. 다음 화면에서 볼 수 있는 메뉴를 정합니다.</p>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px 12px">
+      <label class="f">구분<select id="nw-role"><option value="partner">파트너</option><option value="staff">직원</option></select></label>
+      <label class="f">이름<input id="nw-name"></label>
+      <label class="f">업체명<input id="nw-company" placeholder="파트너만"></label>
+      <label class="f">휴대폰<input id="nw-phone" type="tel" placeholder="010-0000-0000"></label>
+      <label class="f">이메일 (아이디)<input id="nw-email" type="email" autocomplete="off"></label>
+      <label class="f">처음 비밀번호 (8자 이상)<input id="nw-pass" type="text" autocomplete="off"></label>
+    </div>
+    <p class="hint" id="nw-msg" role="alert"></p>
+    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:12px"><button class="btn btn-line" data-close>취소</button><button class="btn btn-primary" id="nw-save">만들기</button></div>`);
+  document.getElementById('modal-box').classList.add('wide');
+  const box = document.getElementById('modal-box');
+  const g = (id) => box.querySelector('#' + id).value.trim();
+  box.querySelector('#nw-pass').value = 'maha' + Math.random().toString(36).slice(2, 8);
+  box.querySelector('#nw-name').focus();
+  box.querySelector('#nw-save').onclick = async (ev) => {
+    const msg = box.querySelector('#nw-msg');
+    const v = { role: g('nw-role'), name: g('nw-name'), company: g('nw-company'), phone: g('nw-phone'), email: g('nw-email').toLowerCase(), pass: g('nw-pass') };
+    if (!v.name || !v.email) { msg.textContent = '이름과 이메일은 꼭 적어 주세요.'; return; }
+    if (v.pass.length < 8) { msg.textContent = '비밀번호는 8자 이상이어야 합니다.'; return; }
+    if (D.members.some((m) => m.email.toLowerCase() === v.email)) { msg.textContent = '이미 등록된 이메일입니다.'; return; }
+    const btn = ev.currentTarget; btn.disabled = true; msg.textContent = '만드는 중...';
+    const tmp = supabase.createClient(MAHA.SB_URL, MAHA.SB_KEY, { auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false, storageKey: 'maha-register' } });
+    const r = await tmp.auth.signUp({ email: v.email, password: v.pass, options: { data: { maha_apply: '1', role: v.role, name: v.name, company: v.company, phone: v.phone } } });
+    const u = r.data && r.data.user;
+    if (r.error || !u || (u.identities && !u.identities.length)) {
+      btn.disabled = false;
+      msg.textContent = r.error ? '만들지 못했습니다: ' + r.error.message : '이미 가입된 이메일입니다.';
+      return;
+    }
+    const needConfirm = !r.data.session;
+    await load();
+    if (!D.members.some((m) => m.user_id === u.id)) { oops('계정은 만들어졌지만 목록에 나타나지 않았습니다. members.sql 을 다시 실행한 뒤 새로고침해 주세요.'); return; }
+    edit(u.id, true, `✅ 계정을 만들었습니다. 아이디 <b>${esc(v.email)}</b> · 비밀번호 <b>${esc(v.pass)}</b>${needConfirm ? '<br>※ 본인 이메일로 간 확인 링크를 한 번 눌러야 로그인됩니다.' : ''}`);
+  };
+}
+
 /* 계정 설정 창: 기본 정보 · 상태 · 메뉴별 권한 */
-function edit(uid, approving) {
+function edit(uid, approving, notice) {
   const x = D.members.find((m) => m.user_id === uid); if (!x) return;
   let pm = permsOf(uid);
   if (approving && !Object.keys(pm).length) pm = { ...(PRESETS[x.role] || PRESETS.none).perms };
@@ -92,6 +139,7 @@ function edit(uid, approving) {
   }).join('');
   modal(`
     <h3>${approving ? '가입 승인' : '계정 설정'} · ${esc(x.name || x.email)}</h3>
+    ${notice ? `<p class="ro-note" style="background:#e6f6ec;border-color:#a7dcb8;color:#15803d">${notice}</p>` : ''}
     <p class="hint">${esc(x.email)} · 신청일 ${dot(x.created_at)} · 현재 <span class="mb-st mb-${x.status}">${ST[x.status]}</span></p>
     <div class="row2" style="display:grid;grid-template-columns:1fr 1fr;gap:8px 12px">
       <label class="f">이름<input id="mb-name" value="${esc(x.name)}"></label>
