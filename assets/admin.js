@@ -10,14 +10,50 @@
   function fail(msg, err) { if (err) console.error(err); modal('<h3>저장하지 못했습니다</h3><p>' + esc(msg) + '</p><p class="hint">' + esc(err && err.message || '') + '</p><button class="btn btn-primary" data-close>확인</button>'); }
   function showOnly(id) { ['view-login', 'view-loading', 'view-admin'].forEach(function (v) { $(v).classList.toggle('hidden', v !== id); }); }
 
+  /* ---------- 계정 · 권한 (supabase/members.sql) ---------- */
+  /* 내 권한 확인. members.sql 실행 전이면 예전처럼 is_admin 으로만 확인 */
+  function checkAccess() {
+    return sb.rpc('my_access').then(function (r) {
+      if (!r.error) return r.data;
+      return sb.rpc('is_admin').then(function (a) { return (!a.error && a.data === true) ? { owner: true, status: 'active', role: 'owner', perms: {} } : null; });
+    });
+  }
+  /* 권한 없는 메뉴 숨기기 · 보기 전용 표시 */
+  function applyAccess(acc) {
+    window.MAHA_ACCESS = acc;
+    var btns = [].slice.call(document.querySelectorAll('#admin-tabs button[data-tab]'));
+    btns.forEach(function (b) {
+      var k = b.dataset.tab;
+      var lv = acc.owner ? 'edit' : (k === 'members' ? 'none' : ((acc.perms || {})[k] || 'none'));
+      b.classList.toggle('hidden', lv === 'none');
+      b.dataset.level = lv;
+      var p = document.querySelector('[data-panel="' + k + '"]');
+      if (p) {
+        var old = p.querySelector('.ro-note'); if (old) old.remove();
+        if (lv === 'view') { var n = document.createElement('p'); n.className = 'ro-note'; n.textContent = '🔒 보기 전용 메뉴입니다. 내용을 고치거나 저장할 수 없습니다.'; p.insertBefore(n, p.children[1] || null); }
+      }
+    });
+    [].forEach.call(document.querySelectorAll('#admin-tabs .adm-grp'), function (g) {
+      g.classList.toggle('hidden', !g.querySelector('button[data-tab]:not(.hidden)'));
+    });
+    var first = btns.filter(function (b) { return !b.classList.contains('hidden'); })[0];
+    if (!btns.some(function (b) { return b.dataset.tab === tab && !b.classList.contains('hidden'); })) tab = first ? first.dataset.tab : '';
+  }
+
   /* ---------- 로그인 ---------- */
   function start() {
     sb.auth.getSession().then(function (r) {
       var s = r.data && r.data.session;
       if (!s) { showOnly('view-login'); setTimeout(function () { $('l-pass').focus(); }, 50); return; }
-      sb.rpc('is_admin').then(function (a) {
-        if (a.error || a.data !== true) { sb.auth.signOut(); showOnly('view-login'); $('l-msg').textContent = '관리자로 등록되지 않은 계정입니다.'; return; }
-        $('who').textContent = s.user.email; showOnly('view-loading'); loadAll(function () { showOnly('view-admin'); render(); });
+      checkAccess().then(function (acc) {
+        var bad = { pending: '가입 신청이 접수되었습니다. 대표님 승인 후 들어올 수 있습니다.', hold: '사용이 보류된 계정입니다. 대표님께 문의해 주세요.', deleted: '삭제된 계정입니다.' };
+        if (!acc || acc.status !== 'active') {
+          sb.auth.signOut(); showOnly('view-login');
+          $('l-msg').textContent = (acc && bad[acc.status]) || '등록되지 않은 계정입니다. 처음이면 아래 "가입 신청"을 눌러 주세요.'; return;
+        }
+        applyAccess(acc);
+        $('who').textContent = (acc.name ? acc.name + ' · ' : '') + s.user.email + (acc.owner ? '' : (acc.role === 'staff' ? ' (직원)' : ' (파트너)'));
+        showOnly('view-loading'); loadAll(function () { showOnly('view-admin'); render(); });
       });
     });
   }
@@ -30,7 +66,26 @@
       $('l-pass').value = ''; start();
     });
   });
-  $('logout').onclick = function () { sb.auth.signOut().then(function () { location.reload(); }); };
+  /* 가입 신청 (직원·파트너) → members 표에 '승인 대기'로 자동 등록 */
+  function joinShow(on) { $('login-form').classList.toggle('hidden', on); $('join-form').classList.toggle('hidden', !on); $('j-msg').textContent = ''; }
+  $('join-open').onclick = function () { joinShow(true); $('j-name').focus(); };
+  $('join-close').onclick = function () { joinShow(false); };
+  $('join-form').addEventListener('submit', function (e) {
+    e.preventDefault();
+    var v = { role: $('j-role').value, name: $('j-name').value.trim(), company: $('j-company').value.trim(), phone: $('j-phone').value.trim(), email: $('j-email').value.trim(), pass: $('j-pass').value };
+    if (!v.name || !v.phone || !v.email) { $('j-msg').textContent = '이름, 휴대폰, 이메일을 모두 적어 주세요.'; return; }
+    if (v.pass.length < 8) { $('j-msg').textContent = '비밀번호는 8자 이상으로 정해 주세요.'; return; }
+    var btn = this.querySelector('button[type=submit]'); btn.disabled = true;
+    sb.auth.signUp({ email: v.email, password: v.pass, options: { data: { maha_apply: '1', role: v.role, name: v.name, company: v.company, phone: v.phone } } }).then(function (r) {
+      btn.disabled = false;
+      if (r.error) { $('j-msg').textContent = /registered|exists/i.test(r.error.message) ? '이미 가입된 이메일입니다. 로그인해 주세요.' : '가입 신청에 실패했습니다: ' + r.error.message; return; }
+      sb.auth.signOut();
+      $('join-form').reset(); joinShow(false);
+      $('l-email').value = v.email;
+      $('l-msg').textContent = '가입 신청이 접수되었습니다. ' + (r.data && r.data.session ? '' : '이메일로 온 확인 링크를 먼저 눌러 주세요. ') + '대표님 승인 후 로그인할 수 있습니다.';
+    });
+  });
+  $('logout').onclick =function () { sb.auth.signOut().then(function () { location.reload(); }); };
 
   /* ---------- 불러오기 ---------- */
   function loadAll(cb) {
