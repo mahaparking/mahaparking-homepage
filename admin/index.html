@@ -312,6 +312,26 @@
 .mb-perm select{width:auto}
 .mb-perm .g{grid-column:1/-1;font-weight:700;margin-top:8px;color:var(--navy,#0b2340)}
 .join-link{margin-top:16px;padding-top:14px;border-top:1px solid var(--line);font-size:14.5px;color:#475569;text-align:center}.join-link button{background:none;border:0;color:var(--brand,#0b5fa5);font-weight:700;text-decoration:underline;cursor:pointer;font-size:14.5px;padding:0 0 0 4px}
+.lg-sum{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:16px}
+.lg-card{border:1px solid var(--line,#e3e7ee);border-radius:12px;padding:14px 16px;background:#fff}
+.lg-card span{display:block;font-size:13px;color:#667;font-weight:700}.lg-card b{display:block;font-size:24px;margin:4px 0 2px}
+.lg-card small{color:#778;font-size:12px}.lg-in b{color:#1d4ed8}.lg-out b{color:#b45309}.lg-pf b{color:#15803d}.lg-card b.lg-neg{color:#dc2626}
+.lg-search{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:12px}
+.lg-search label{display:flex;gap:6px;align-items:center;font-size:14px}.lg-search input,.lg-search select{height:36px;border:1px solid #d6dbe3;border-radius:8px;padding:0 8px;font:inherit;font-size:14px}
+.lg-search select{width:auto}.lg-search input[type=date]{width:auto}.lg-search input[type=search]{flex:1;min-width:200px;width:auto}.lg-quick{display:flex;gap:4px}
+.lg-bar{display:flex;gap:8px;align-items:center;margin-bottom:8px;flex-wrap:wrap}.lg-bar b{margin-right:6px}
+.lg-wrap{overflow:auto;border:1px solid #d6dbe3;border-radius:10px;max-height:70vh}
+.lg-tbl{border-collapse:collapse;width:100%;min-width:1120px;font-size:14px;table-layout:fixed}
+.lg-tbl th{position:sticky;top:0;background:#f3f5f8;z-index:1;font-size:13px;color:#556;text-align:left;padding:8px 6px;border-bottom:1px solid #d6dbe3;border-right:1px solid #e6e9ee}
+.lg-tbl td{border-bottom:1px solid #e6e9ee;border-right:1px solid #eef0f3;padding:0}
+.lg-tbl th.num,.lg-tbl td.num,.lg-c.num{text-align:right}
+.lg-c{width:100%;height:36px;border:0;background:transparent;padding:0 7px;font:inherit;font-size:14px;outline:none;box-sizing:border-box}
+.lg-c:focus{background:#fffbea;box-shadow:inset 0 0 0 2px #2563eb}.lg-c:disabled{color:inherit}
+.lg-tbl tr.lg-in td:first-child{box-shadow:inset 3px 0 0 #3b82f6}.lg-tbl tr.lg-out td:first-child{box-shadow:inset 3px 0 0 #f59e0b}
+.lg-tbl tr.lg-out .lg-tot{color:#b45309}.lg-tot{font-weight:700}
+.lg-tbl td .hint{padding:0 8px}.lg-del{border:0;background:none;color:#a0a6b0;cursor:pointer;width:100%;height:36px;font-size:14px}.lg-del:hover{color:#dc2626}
+.lg-tbl tfoot td{position:sticky;bottom:0;background:#f3f5f8;font-weight:700;padding:9px 7px;border-top:2px solid #d6dbe3}
+@media (max-width:760px){.lg-sum{grid-template-columns:1fr}.lg-card b{font-size:20px}}
 </style>
 </head>
 <body>
@@ -366,6 +386,12 @@
           <div class="adm-grp-h" role="button" tabindex="0" aria-expanded="false"><span>🛠 작업 관리</span><i aria-hidden="true">▾</i></div>
           <div class="adm-grp-items">
             <button role="tab" data-tab="works">작업 일정 · 수금</button>
+          </div>
+        </div>
+        <div class="adm-grp">
+          <div class="adm-grp-h" role="button" tabindex="0" aria-expanded="false"><span>💰 매입·매출</span><i aria-hidden="true">▾</i></div>
+          <div class="adm-grp-items">
+            <button role="tab" data-tab="ledger">매입·매출 장부</button>
           </div>
         </div>
         <div class="adm-grp">
@@ -536,6 +562,12 @@
       <div id="shot-root"></div>
     </div>
 
+    <!-- 매입·매출 장부 (assets/ledger/ledger.js) -->
+    <div class="card panel hidden" data-panel="ledger">
+      <h2>매입·매출 장부</h2>
+      <div id="ledger-root"></div>
+    </div>
+
     <!-- 자료실 (assets/library/library.js) -->
     <div class="card panel hidden" data-panel="library">
       <h2>자료실</h2>
@@ -594,6 +626,7 @@
 <script type="module" src="/assets/works/works.js"></script>
 <script type="module" src="/assets/collect/collect.js"></script>
 <script type="module" src="/assets/library/library.js"></script>
+<script type="module" src="/assets/ledger/ledger.js"></script>
 <script type="module" src="/assets/members/members.js"></script>
 </body>
 </html>
