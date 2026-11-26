@@ -19,6 +19,7 @@ create table if not exists public.ledger (
 );
 create index if not exists ledger_d_idx on public.ledger (d desc);
 alter table public.ledger enable row level security;
+grant select, insert, update, delete on public.ledger to authenticated;
 do $$ begin
   if exists (select 1 from pg_proc where proname = 'has_perm') then
     drop policy if exists ledger_perm_read on public.ledger;
@@ -30,3 +31,5 @@ do $$ begin
     create policy ledger_admin_all on public.ledger for all to authenticated using (public.is_admin()) with check (public.is_admin());
   end if;
 end $$;
+
+notify pgrst, 'reload schema';

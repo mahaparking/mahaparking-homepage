@@ -29,7 +29,7 @@ async function load() {
   root.innerHTML = '<p class="hint">불러오는 중…</p>';
   const { data, error } = await sb.from('ledger').select('*').order('d', { ascending: false }).order('created_at', { ascending: false }).limit(5000);
   if (error) {
-    L.setup = /ledger|schema cache|does not exist/i.test(error.message);
+    L.setup = /schema cache|does not exist/i.test(error.message);
     root.innerHTML = L.setup
       ? '<div class="notice"><b>처음 한 번만 설정이 필요합니다.</b><span>Supabase → SQL Editor 에서 <code>supabase/ledger.sql</code> 내용을 붙여 넣고 Run 을 누른 뒤, 이 화면을 새로고침해 주세요.</span></div>'
       : `<p class="hint">불러오지 못했습니다: ${esc(error.message)}</p>`;
