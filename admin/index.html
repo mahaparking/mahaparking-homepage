@@ -334,6 +334,12 @@
 @media (max-width:760px){.lg-sum{grid-template-columns:1fr}.lg-card b{font-size:20px}}
 body.adm-wide .wrap{max-width:min(1880px,100%)}
 body.adm-wide .adm-layout{grid-template-columns:200px minmax(0,1fr);gap:16px}
+.lg-sum{grid-template-columns:repeat(auto-fit,minmax(170px,1fr))}.lg-part b{font-size:19px;color:#334}
+.lg-chk{display:flex;gap:6px;align-items:center;font-size:14px;white-space:nowrap;cursor:pointer}.lg-chk input{height:auto;width:auto;margin:0}
+.lg-sumtbl{min-width:1000px;table-layout:auto}.lg-sumtbl td{padding:10px 10px}.lg-sumtbl th{text-align:center}.lg-sumtbl th.num{text-align:right}
+.lg-gh-in{background:#e8f0ff !important;color:#1d4ed8 !important}.lg-gh-out{background:#fff4e5 !important;color:#b45309 !important}
+.lg-c-in{color:#1d4ed8;font-weight:700}.lg-c-out{color:#b45309;font-weight:700}.lg-c-pf{color:#15803d;font-weight:700}.lg-sumtbl td.lg-neg,.lg-sumtbl td.num.lg-neg{color:#dc2626}
+.lg-mlink{border:0;background:none;color:#1d4ed8;font:inherit;font-weight:700;cursor:pointer;padding:0;text-decoration:underline}
 </style>
 </head>
 <body>
@@ -393,7 +399,7 @@ body.adm-wide .adm-layout{grid-template-columns:200px minmax(0,1fr);gap:16px}
         <div class="adm-grp">
           <div class="adm-grp-h" role="button" tabindex="0" aria-expanded="false"><span>💰 매입·매출</span><i aria-hidden="true">▾</i></div>
           <div class="adm-grp-items">
-            <button role="tab" data-tab="ledger">매입·매출 장부</button>
+            <button role="tab" data-tab="ledger">매출 · 매입 · 합계</button>
           </div>
         </div>
         <div class="adm-grp">
