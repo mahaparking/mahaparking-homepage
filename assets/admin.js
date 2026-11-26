@@ -108,7 +108,7 @@
   function render() {
     [].forEach.call(document.querySelectorAll('#admin-tabs button'), function (b) { b.setAttribute('aria-selected', b.dataset.tab === tab); });
     [].forEach.call(document.querySelectorAll('[data-panel]'), function (p) { p.classList.toggle('hidden', p.dataset.panel !== tab); });
-    document.body.classList.toggle('adm-wide', tab === 'ledger');  /* 장부처럼 표가 넓은 화면은 화면 폭을 넓게 */
+    document.body.classList.add('adm-wide');  /* 관리자 화면은 모두 모니터 폭에 맞춰 넓게 */
     var n = D.requests.filter(function (r) { return r.status === 'new'; }).length;
     $('new-badge').textContent = n || ''; $('new-badge').classList.toggle('hidden', !n);
     if (tab === 'requests') drawRequests();
