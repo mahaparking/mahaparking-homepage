@@ -93,7 +93,7 @@ function draw() {
     <button class="btn btn-line btn-sm" type="button" id="lg-xls">⬇ 엑셀 저장</button>
     <span class="hint" id="lg-msg">${esc(L.msg)}</span></div>
   <div class="lg-wrap"><table class="lg-tbl">
-    <thead><tr><th style="width:128px">날짜</th><th style="width:66px">구분</th><th style="width:96px">매입 항목</th><th style="width:124px">증빙</th><th style="width:120px">거래처</th><th style="width:180px">내용</th><th style="width:96px" class="num">공급가</th><th style="width:82px" class="num">부가세</th><th style="width:100px" class="num">합계</th><th style="width:110px">메모</th><th style="width:30px"></th></tr></thead>
+    <thead><tr><th style="width:128px">날짜</th><th style="width:66px">구분</th><th style="width:96px">매입 항목</th><th style="width:124px">증빙</th><th style="width:120px">거래처</th><th style="width:180px">내용</th><th style="width:96px" class="num">공급가</th><th style="width:82px" class="num">부가세</th><th style="width:100px" class="num">합계</th><th style="width:200px">메모</th><th style="width:30px"></th></tr></thead>
     <tbody>${list.length ? list.map((r) => rowHtml(r, ro)).join('') : `<tr><td colspan="11" class="hint" style="padding:18px">${L.rows.length ? '조건에 맞는 거래가 없습니다.' : '아직 입력한 거래가 없습니다. 위의 [＋ 매출 추가] · [＋ 매입 추가]를 눌러 시작하세요.'}</td></tr>`}</tbody>
     ${list.length ? `<tfoot><tr><td colspan="6">검색 결과 합계 (매출 − 매입)</td><td class="num">${won(s.inSup - s.outSup)}</td><td class="num">${won(list.reduce((a, r) => a + (r.kind === 'in' ? 1 : -1) * r.vat, 0))}</td><td class="num">${won(s.in - s.out)}</td><td colspan="2"></td></tr></tfoot>` : ''}
   </table></div>
